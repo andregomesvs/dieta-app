@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Minha Dieta — Entrar</title>
+  <link rel="stylesheet" href="/static/css/style.css" />
+</head>
+<body>
+  <div class="wrap" style="max-width:420px">
+    <div class="brand"><span class="dot"></span> Minha Dieta</div>
+    <p class="subtitle">Gestão de dieta para perda de peso com IA</p>
+
+    <div class="card">
+      <h2 id="formTitle">Entrar</h2>
+      <p class="hint">Use seu e-mail e senha.</p>
+
+      <label>E-mail</label>
+      <input id="email" type="email" placeholder="voce@email.com" autocomplete="email" />
+
+      <label>Senha</label>
+      <input id="password" type="password" placeholder="••••••••" autocomplete="current-password" />
+
+      <div style="height:14px"></div>
+      <div class="row">
+        <button id="btnPrimary">Entrar</button>
+        <button id="btnToggle" class="secondary">Criar conta</button>
+      </div>
+      <div id="msg" class="msg"></div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+    import {
+      getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword,
+      onAuthStateChanged
+    } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+    import { firebaseConfig } from "/static/js/firebase-config.js";
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+
+    let mode = "login"; // login | signup
+    const $ = (id) => document.getElementById(id);
+
+    onAuthStateChanged(auth, (user) => {
+      if (user) window.location.href = "/app";
+    });
+
+    $("btnToggle").onclick = () => {
+      mode = mode === "login" ? "signup" : "login";
+      $("formTitle").textContent = mode === "login" ? "Entrar" : "Criar conta";
+      $("btnPrimary").textContent = mode === "login" ? "Entrar" : "Cadastrar";
+      $("btnToggle").textContent = mode === "login" ? "Criar conta" : "Já tenho conta";
+      $("msg").textContent = "";
+    };
+
+    $("btnPrimary").onclick = async () => {
+      const email = $("email").value.trim();
+      const pass = $("password").value;
+      const msg = $("msg");
+      msg.className = "msg";
+      msg.textContent = "";
+      if (!email || !pass) { msg.className = "msg err"; msg.textContent = "Preencha e-mail e senha."; return; }
+      try {
+        if (mode === "login") await signInWithEmailAndPassword(auth, email, pass);
+        else await createUserWithEmailAndPassword(auth, email, pass);
+        // redireciona via onAuthStateChanged
+      } catch (e) {
+        msg.className = "msg err";
+        msg.textContent = traduzErro(e.code || e.message);
+      }
+    };
+
+    function traduzErro(code) {
+      const m = {
+        "auth/invalid-credential": "E-mail ou senha incorretos.",
+        "auth/invalid-email": "E-mail inválido.",
+        "auth/user-not-found": "Usuário não encontrado.",
+        "auth/wrong-password": "Senha incorreta.",
+        "auth/email-already-in-use": "Este e-mail já está cadastrado.",
+        "auth/weak-password": "A senha precisa ter ao menos 6 caracteres.",
+      };
+      return m[code] || ("Erro: " + code);
+    }
+  </script>
+</body>
+</html>
