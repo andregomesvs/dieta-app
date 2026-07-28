@@ -18,10 +18,18 @@ o header Authorization: Bearer <Firebase ID Token>.
 """
 
 import os
+import re
 import json
 import base64
 import datetime
+import urllib.parse
+import urllib.request
 from functools import wraps
+
+try:
+    from zoneinfo import ZoneInfo
+except ImportError:  # Python < 3.9
+    ZoneInfo = None
 
 from dotenv import load_dotenv
 from flask import Flask, request, jsonify, send_from_directory, g
@@ -41,6 +49,13 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
 CRED_PATH = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "./firebase-service-account.json")
 FIREBASE_PROJECT_ID = os.environ.get("FIREBASE_PROJECT_ID", "")
+
+# Telegram + agendamento de lembretes
+TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+CRON_SECRET = os.environ.get("CRON_SECRET", "")
+TIMEZONE = os.environ.get("TIMEZONE", "America/Sao_Paulo")
+# Tolerância (min): manda a refeição se o horário caiu nos últimos N minutos.
+REMINDER_WINDOW_MIN = int(os.environ.get("REMINDER_WINDOW_MIN", "15"))
 
 FRONTEND_DIR = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "..", "frontend")
@@ -97,6 +112,97 @@ def gemini(system_instruction=None):
         system_instruction=system_instruction,
         generation_config={"response_mime_type": "application/json"},
     )
+
+
+# ---------------------------------------------------------------------------
+# Telegram
+# ---------------------------------------------------------------------------
+TG_API = "https://api.telegram.org/bot{token}/{method}"
+
+
+def tg_call(method, params):
+    if not TELEGRAM_BOT_TOKEN:
+        raise RuntimeError("TELEGRAM_BOT_TOKEN não configurado")
+    url = TG_API.format(token=TELEGRAM_BOT_TOKEN, method=method)
+    data = urllib.parse.urlencode(params).encode()
+    with urllib.request.urlopen(url, data=data, timeout=20) as r:
+        return json.loads(r.read().decode())
+
+
+def tg_send(chat_id, text):
+    return tg_call("sendMessage", {
+        "chat_id": chat_id,
+        "text": text,
+        "parse_mode": "HTML",
+        "disable_web_page_preview": "true",
+    })
+
+
+def tg_updates():
+    """Retorna os chats que mandaram mensagem recente para o bot."""
+    res = tg_call("getUpdates", {})
+    chats = {}
+    for upd in res.get("result", []):
+        msg = upd.get("message") or upd.get("edited_message") or {}
+        chat = msg.get("chat")
+        if chat:
+            nome = " ".join(filter(None, [chat.get("first_name"), chat.get("last_name")])) \
+                or chat.get("username") or str(chat["id"])
+            chats[str(chat["id"])] = nome
+    return [{"chat_id": k, "nome": v} for k, v in chats.items()]
+
+
+def parse_horario(txt):
+    """Extrai (hora, minuto) de strings como '09:00', '9h', '12h30', '7:5'."""
+    if not txt:
+        return None
+    m = re.search(r"(\d{1,2})\s*[:hH]\s*(\d{1,2})?", str(txt))
+    if not m:
+        return None
+    h = int(m.group(1))
+    mnt = int(m.group(2)) if m.group(2) else 0
+    if 0 <= h <= 23 and 0 <= mnt <= 59:
+        return h, mnt
+    return None
+
+
+def now_local():
+    if ZoneInfo:
+        try:
+            return datetime.datetime.now(ZoneInfo(TIMEZONE))
+        except Exception:  # noqa: BLE001
+            pass
+    return datetime.datetime.now()
+
+
+def _esc(s):
+    """Escapa caracteres reservados do HTML do Telegram."""
+    return (str(s if s is not None else "")
+            .replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
+
+
+def format_meal_message(refeicao):
+    """Monta a mensagem de uma refeição no formato do app."""
+    nome = _esc(refeicao.get("nome", "Refeição"))
+    horario = _esc(refeicao.get("horario", ""))
+    kcal = refeicao.get("kcal_total")
+    cab = f"🍽 <b>{nome}</b>"
+    if horario:
+        cab += f" — {horario}"
+    if kcal:
+        cab += f" · {kcal} kcal"
+    linhas = [cab]
+    for it in refeicao.get("itens", []):
+        alimento = _esc(it.get("alimento", ""))
+        porcao = _esc(it.get("porcao", ""))
+        ik = it.get("kcal")
+        linha = f"• {alimento}"
+        if porcao:
+            linha += f" — {porcao}"
+        if ik:
+            linha += f" · {ik} kcal"
+        linhas.append(linha)
+    return "\n".join(linhas)
 
 
 # ---------------------------------------------------------------------------
@@ -345,6 +451,100 @@ def list_diets():
         item["id"] = d.id
         out.append(item)
     return jsonify(out)
+
+
+# ---------------------------------------------------------------------------
+# API: Telegram (detectar chat, testar envio)
+# ---------------------------------------------------------------------------
+@app.route("/api/telegram/detect", methods=["GET"])
+@require_auth
+def telegram_detect():
+    """Lista chats que mandaram mensagem recente ao bot (para pegar o chat_id)."""
+    try:
+        return jsonify({"chats": tg_updates()})
+    except Exception as e:  # noqa: BLE001
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/telegram/test", methods=["POST"])
+@require_auth
+def telegram_test():
+    """Envia uma mensagem de teste para o chat_id informado/salvo."""
+    data = request.get_json(silent=True) or {}
+    chat_id = data.get("chat_id") or (
+        db().collection("usuarios").document(g.uid).get().to_dict() or {}
+    ).get("telegram_chat_id")
+    if not chat_id:
+        return jsonify({"error": "chat_id não informado"}), 400
+    try:
+        tg_send(chat_id, "✅ <b>Minha Dieta</b>\nLembretes conectados! Você vai receber "
+                         "suas refeições nos horários da dieta.")
+        return jsonify({"ok": True})
+    except Exception as e:  # noqa: BLE001
+        return jsonify({"error": str(e)}), 500
+
+
+# ---------------------------------------------------------------------------
+# CRON: enviar lembretes das refeições que estão na hora
+# ---------------------------------------------------------------------------
+@app.route("/cron/send-reminders", methods=["GET", "POST"])
+def cron_send_reminders():
+    """Chamado por um cron externo. Protegido por CRON_SECRET.
+
+    Para cada usuário com telegram_chat_id, pega a dieta mais recente e envia
+    as refeições cujo horário caiu na janela atual, evitando duplicar no dia.
+    """
+    secret = request.args.get("secret") or request.headers.get("X-Cron-Secret")
+    if not CRON_SECRET or secret != CRON_SECRET:
+        return jsonify({"error": "não autorizado"}), 401
+
+    agora = now_local()
+    hoje = agora.strftime("%Y-%m-%d")
+    enviados_total = 0
+    detalhes = []
+
+    for user_doc in db().collection("usuarios").stream():
+        perfil = user_doc.to_dict() or {}
+        chat_id = perfil.get("telegram_chat_id")
+        if not chat_id:
+            continue
+
+        # dieta mais recente
+        dietas = list(
+            db().collection("usuarios").document(user_doc.id)
+            .collection("dietas")
+            .order_by("criado_em", direction=firestore.Query.DESCENDING)
+            .limit(1).stream()
+        )
+        if not dietas:
+            continue
+        dieta = (dietas[0].to_dict() or {}).get("dieta") or {}
+        refeicoes = dieta.get("refeicoes") or []
+
+        # marcador de enviados do dia
+        marca_ref = (db().collection("usuarios").document(user_doc.id)
+                     .collection("lembretes").document(hoje))
+        ja_enviados = set((marca_ref.get().to_dict() or {}).get("enviados", []))
+
+        for idx, ref in enumerate(refeicoes):
+            hm = parse_horario(ref.get("horario"))
+            if not hm:
+                continue
+            alvo = agora.replace(hour=hm[0], minute=hm[1], second=0, microsecond=0)
+            delta_min = (agora - alvo).total_seconds() / 60.0
+            chave = f"{idx}"
+            if 0 <= delta_min <= REMINDER_WINDOW_MIN and chave not in ja_enviados:
+                try:
+                    tg_send(chat_id, format_meal_message(ref))
+                    ja_enviados.add(chave)
+                    enviados_total += 1
+                    detalhes.append({"uid": user_doc.id, "refeicao": ref.get("nome")})
+                except Exception as e:  # noqa: BLE001
+                    detalhes.append({"uid": user_doc.id, "erro": str(e)})
+
+        marca_ref.set({"enviados": list(ja_enviados)}, merge=True)
+
+    return jsonify({"hora": agora.isoformat(), "enviados": enviados_total, "detalhes": detalhes})
 
 
 # ---------------------------------------------------------------------------

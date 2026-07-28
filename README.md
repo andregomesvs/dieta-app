@@ -80,9 +80,40 @@ abra **http://localhost:5000** no navegador.
 ## Dados no Firestore
 
 ```
-usuarios/{uid}                     -> dados pessoais + últimas respostas
+usuarios/{uid}                     -> dados pessoais + telegram_chat_id
 usuarios/{uid}/dietas/{id}         -> cada dieta gerada (com data)
+usuarios/{uid}/lembretes/{data}    -> controle de refeições já enviadas no dia
 ```
+
+## Lembretes no Telegram
+
+O app envia cada refeição no horário certo via bot do Telegram.
+
+### 1. Criar o bot
+
+1. No Telegram, fale com o **@BotFather** → `/newbot` → escolha nome e usuário.
+2. Ele devolve um **token** (`123456:ABC...`). Guarde.
+3. No Render → serviço `minha-dieta` → **Environment** → variável
+   `TELEGRAM_BOT_TOKEN` = o token do bot. Salve.
+
+### 2. Conectar seu Telegram no app
+
+1. No app, tela **Criar / atualizar perfil** → seção **Lembretes no Telegram**.
+2. Abra o seu bot no Telegram e toque em **Iniciar** (ou mande "oi").
+3. Clique em **Detectar meu Telegram** (preenche seu chat ID) → **Enviar teste**.
+4. Recebeu a mensagem de teste? Está conectado.
+
+### 3. Agendar o cron (gratuito)
+
+O Render free "dorme"; por isso um cron externo chama o app periodicamente.
+
+1. Em [cron-job.org](https://cron-job.org/) (grátis), crie um cron job.
+2. **URL:** `https://SEU-APP.onrender.com/cron/send-reminders?secret=SEU_CRON_SECRET`
+   - O valor de `CRON_SECRET` está no Render → Environment (gerado automaticamente).
+3. **Frequência:** a cada 10 minutos (ou 5). A janela padrão é 15 min, então
+   nenhuma refeição é perdida e nada é enviado duplicado no mesmo dia.
+
+Pronto: nas horas das refeições da sua dieta, a mensagem chega no Telegram.
 
 ## Aviso
 

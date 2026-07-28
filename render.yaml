@@ -17,5 +17,11 @@ services:
         value: /etc/secrets/firebase-service-account.json
       - key: FIREBASE_PROJECT_ID
         value: calendar-190c7
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false            # token do @BotFather (defina no painel)
+      - key: CRON_SECRET
+        generateValue: true    # segredo que protege /cron/send-reminders
+      - key: TIMEZONE
+        value: America/Sao_Paulo
       - key: PYTHON_VERSION
         value: "3.12.4"

@@ -97,6 +97,25 @@
         <button id="btnGenerate">Gerar minha dieta</button>
         <div id="dietMsg" class="msg"></div>
       </div>
+
+      <div class="card">
+        <h2>4. Lembretes no Telegram (opcional)</h2>
+        <p class="hint">Receba cada refeição no horário certo. Faça uma vez:</p>
+        <ol style="font-size:13px;color:var(--muted);line-height:1.7;margin:0 0 6px;padding-left:18px">
+          <li>No Telegram, abra o bot <b id="botName">do app</b> e toque em <b>Iniciar</b> (ou envie "oi").</li>
+          <li>Volte aqui e clique em <b>Detectar meu Telegram</b>.</li>
+          <li>Clique em <b>Enviar teste</b> para confirmar.</li>
+        </ol>
+        <label>Meu chat ID do Telegram</label>
+        <input id="telegram_chat_id" placeholder="ex.: 123456789" />
+        <div style="height:10px"></div>
+        <div class="row">
+          <button id="btnTgDetect" class="secondary">Detectar meu Telegram</button>
+          <button id="btnTgTest" class="secondary">Enviar teste</button>
+          <button id="btnTgSave" class="secondary">Salvar</button>
+        </div>
+        <div id="tgMsg" class="msg"></div>
+      </div>
     </section>
 
     <!-- ===================== DIETA ===================== -->
@@ -124,7 +143,7 @@
 
     const PROFILE_FIELDS = ["nome","sexo","idade","altura_cm","peso_kg",
       "percentual_gordura","massa_magra_kg","taxa_metabolica_basal_kcal"];
-    const EXTRA_FIELDS = ["objetivo","prazo","rotina_treino","rotina_alimentar","restricoes"];
+    const EXTRA_FIELDS = ["objetivo","prazo","rotina_treino","rotina_alimentar","restricoes","telegram_chat_id"];
 
     let token = null;
     let profile = {};
@@ -277,6 +296,50 @@
         showView("dieta");
       } catch (e) { setMsg($("dietMsg"), e.message, "err"); }
       finally { $("btnGenerate").disabled = false; }
+    };
+
+    // ---------- Telegram ----------
+    $("btnTgDetect").onclick = async () => {
+      loading($("tgMsg"), "Procurando sua conversa com o bot...");
+      try {
+        const res = await api("/api/telegram/detect");
+        const chats = res.chats || [];
+        if (!chats.length) {
+          setMsg($("tgMsg"), "Nenhuma conversa encontrada. Abra o bot no Telegram, toque em Iniciar e tente de novo.", "err");
+          return;
+        }
+        $("telegram_chat_id").value = chats[0].chat_id;
+        const nomes = chats.map((c) => `${c.nome} (${c.chat_id})`).join(", ");
+        setMsg($("tgMsg"), "Detectado: " + nomes + ". Clique em Enviar teste.", "ok");
+      } catch (e) { setMsg($("tgMsg"), e.message, "err"); }
+    };
+
+    $("btnTgSave").onclick = async () => {
+      loading($("tgMsg"), "Salvando...");
+      try {
+        profile.telegram_chat_id = $("telegram_chat_id").value.trim();
+        await api("/api/profile", { method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ telegram_chat_id: profile.telegram_chat_id }) });
+        setMsg($("tgMsg"), "Telegram salvo.", "ok");
+      } catch (e) { setMsg($("tgMsg"), e.message, "err"); }
+    };
+
+    $("btnTgTest").onclick = async () => {
+      const chat_id = $("telegram_chat_id").value.trim();
+      if (!chat_id) { setMsg($("tgMsg"), "Detecte ou informe o chat ID primeiro.", "err"); return; }
+      loading($("tgMsg"), "Enviando teste...");
+      try {
+        // garante que está salvo antes de testar
+        await api("/api/profile", { method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ telegram_chat_id: chat_id }) });
+        profile.telegram_chat_id = chat_id;
+        await api("/api/telegram/test", { method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ chat_id }) });
+        setMsg($("tgMsg"), "Teste enviado! Confira seu Telegram.", "ok");
+      } catch (e) { setMsg($("tgMsg"), e.message, "err"); }
     };
 
     // ---------- DIETA ----------
