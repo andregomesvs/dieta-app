@@ -185,6 +185,27 @@ select.field { padding: 0 12px; }
 .totals .box small { color: var(--muted3); }
 .disclaimer { font-size: 12px; color: var(--muted); border-left: 3px solid var(--green); padding-left: 10px; margin-top: 14px; }
 
+/* ---------- Análise ---------- */
+.an-item { padding: 16px; border-radius: 14px; background: var(--card); border: 1px solid var(--line); box-shadow: var(--shadow-sm); margin-bottom: 10px; }
+.an-head { display: flex; align-items: center; gap: 10px; }
+.an-dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+.an-title { font-size: 14.5px; font-weight: 600; flex: 1; min-width: 0; }
+.an-badge { font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 999px; letter-spacing: .02em; }
+.an-val { margin-top: 4px; margin-left: 19px; font-family: 'JetBrains Mono', monospace; font-size: 12.5px; color: var(--muted2); }
+.an-comment { margin-top: 7px; margin-left: 19px; font-size: 13px; line-height: 1.55; color: var(--muted); }
+.s-bom { color: var(--green); } .bg-bom { background: rgba(20,115,90,.12); color: var(--green); }
+.s-atencao { color: #B07A1E; } .bg-atencao { background: rgba(200,138,62,.15); color: #96661A; }
+.s-alerta { color: var(--danger); } .bg-alerta { background: rgba(192,57,43,.12); color: var(--danger); }
+.d-bom { background: var(--green); } .d-atencao { background: #C08A3E; } .d-alerta { background: var(--danger); }
+
+/* ---------- Substituições ---------- */
+.sub-group { margin-top: 14px; }
+.sub-group .gt { font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--green); margin-bottom: 8px; }
+.sub-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.sub-chip { padding: 8px 12px; border-radius: 12px; background: var(--soft); border: 1px solid rgba(25,28,26,.06); font-size: 13px; }
+.sub-chip b { font-weight: 600; }
+.sub-chip span { color: var(--muted3); font-family: 'JetBrains Mono', monospace; font-size: 11.5px; }
+
 @media print {
   body { background: #fff; }
   body * { visibility: hidden; }

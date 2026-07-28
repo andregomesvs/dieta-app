@@ -339,6 +339,109 @@ def analyze_pdf():
 
 
 # ---------------------------------------------------------------------------
+# API: análise de exame de sangue
+# ---------------------------------------------------------------------------
+BLOOD_EXTRACT_PROMPT = """Você extrai resultados de exames de sangue. Analise o \
+PDF anexado e devolva APENAS um objeto JSON válido (sem markdown) no formato:
+
+{
+  "data_exame": string|null,
+  "marcadores": [
+    {
+      "nome": string,            // ex.: "Glicose", "Colesterol LDL", "Triglicerídeos", "TSH", "Vitamina D"
+      "valor": string,           // ex.: "112 mg/dL"
+      "referencia": string|null, // faixa de referência do laudo, se houver
+      "status": "normal"|"atencao"|"alterado"|null  // sua avaliação vs. referência
+    }
+  ]
+}
+
+Inclua todos os marcadores relevantes que encontrar (glicose, HbA1c, perfil \
+lipídico, função hepática e renal, tireoide, vitaminas, hemograma, etc.). \
+Responda somente com o JSON."""
+
+
+@app.route("/api/analyze-blood", methods=["POST"])
+@require_auth
+def analyze_blood():
+    """Recebe um PDF de exame de sangue e extrai os marcadores."""
+    if "file" not in request.files:
+        return jsonify({"error": "Nenhum PDF enviado"}), 400
+    pdf_bytes = request.files["file"].read()
+    try:
+        resp = gemini().generate_content(
+            [
+                {"mime_type": "application/pdf", "data": pdf_bytes},
+                BLOOD_EXTRACT_PROMPT,
+            ]
+        )
+        raw = (resp.text or "").strip()
+        parsed = _safe_json(raw)
+        return jsonify({"data": parsed, "raw": raw})
+    except Exception as e:  # noqa: BLE001
+        return jsonify({"error": str(e)}), 500
+
+
+# ---------------------------------------------------------------------------
+# API: análise de saúde (bioimpedância + sangue)
+# ---------------------------------------------------------------------------
+HEALTH_ANALYSIS_SYSTEM = """Você é um profissional de saúde que interpreta \
+dados de bioimpedância e exames de sangue de forma clara e acolhedora, para \
+leigos. NÃO faça diagnóstico nem prescreva medicação. Aponte o que merece \
+atenção e o que está bem, com linguagem simples.
+
+Devolva APENAS um JSON válido (sem markdown) no formato:
+{
+  "resumo": string,
+  "destaques": [
+    {
+      "titulo": string,          // ex.: "Colesterol LDL elevado"
+      "valor": string,           // ex.: "165 mg/dL (ref. < 130)"
+      "status": "bom"|"atencao"|"alerta",
+      "origem": "bioimpedancia"|"sangue",
+      "comentario": string       // 1-2 frases explicando e o que fazer na alimentação
+    }
+  ],
+  "recomendacoes_dieta": [string],
+  "aviso": "Interpretação gerada por IA. Leve seus exames a um médico ou nutricionista."
+}
+
+Ordene os destaques do mais importante para o menos. Priorize itens com status \
+'alerta' e 'atencao'. Foque no que dá para melhorar pela alimentação."""
+
+
+@app.route("/api/health-analysis", methods=["POST"])
+@require_auth
+def health_analysis():
+    """Gera a análise dos exames a partir do perfil + marcadores salvos."""
+    perfil = db().collection("usuarios").document(g.uid).get().to_dict() or {}
+    bio = {k: perfil.get(k) for k in (
+        "sexo", "idade", "altura_cm", "peso_kg", "imc", "percentual_gordura",
+        "massa_magra_kg", "gordura_visceral", "taxa_metabolica_basal_kcal") if perfil.get(k) is not None}
+    sangue = perfil.get("exames_sangue") or {}
+
+    if not bio and not sangue:
+        return jsonify({"error": "Nenhum dado de exame para analisar. Preencha o perfil ou anexe um exame."}), 400
+
+    user_msg = (
+        "Dados de bioimpedância / composição corporal:\n"
+        + json.dumps(bio, ensure_ascii=False, indent=2)
+        + "\n\nExames de sangue:\n"
+        + json.dumps(sangue, ensure_ascii=False, indent=2)
+        + "\n\nGere a análise no formato JSON solicitado."
+    )
+    try:
+        resp = gemini(system_instruction=HEALTH_ANALYSIS_SYSTEM).generate_content(user_msg)
+        raw = (resp.text or "").strip()
+        analise = _safe_json(raw)
+        analise["gerado_em"] = datetime.datetime.utcnow().isoformat()
+        db().collection("usuarios").document(g.uid).set({"analise": analise}, merge=True)
+        return jsonify(analise)
+    except Exception as e:  # noqa: BLE001
+        return jsonify({"error": str(e)}), 500
+
+
+# ---------------------------------------------------------------------------
 # API: perfil do usuário
 # ---------------------------------------------------------------------------
 @app.route("/api/profile", methods=["GET"])
@@ -380,9 +483,19 @@ Devolva APENAS um JSON válido (sem markdown) neste formato:
       "kcal_total": number
     }
   ],
+  "substituicoes": {
+    "proteinas": [{"alimento": string, "porcao": string, "kcal": number}],
+    "carboidratos": [{"alimento": string, "porcao": string, "kcal": number}],
+    "frutas": [{"alimento": string, "porcao": string, "kcal": number}]
+  },
   "observacoes": string,
   "aviso": "Este plano é uma sugestão gerada por IA e não substitui um nutricionista."
-}"""
+}
+
+Em "substituicoes", forneça de 5 a 7 opções equivalentes em cada grupo \
+(proteinas, carboidratos, frutas), com a porção ajustada para calorias \
+parecidas, priorizando alimentos acessíveis no Brasil, para o usuário poder \
+trocar itens da dieta mantendo o equilíbrio."""
 
 
 @app.route("/api/generate-diet", methods=["POST"])

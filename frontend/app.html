@@ -67,6 +67,20 @@
     </div>
   </div>
 
+  <!-- Análise dos exames -->
+  <div class="card" style="margin-top:14px; display:flex; flex-wrap:wrap; align-items:center; gap:16px; justify-content:space-between;">
+    <div style="display:flex; align-items:flex-start; gap:13px; min-width:0;">
+      <span style="width:40px; height:40px; flex:none; border-radius:12px; background:rgba(20,115,90,.09); color:var(--green); display:grid; place-items:center;">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h10l4 4v12H4z"></path><path d="M14 4v4h4"></path><path d="M8 13l2 2 4-4"></path></svg>
+      </span>
+      <div style="min-width:0;">
+        <div class="card-title" style="font-size:22px;">Análise dos exames</div>
+        <div id="analiseTeaser" style="margin-top:2px; font-size:13px; color:var(--muted); line-height:1.5;"></div>
+      </div>
+    </div>
+    <button id="btnAnalise" class="btn btn-primary" style="height:42px;">Ver análise</button>
+  </div>
+
   <!-- Evolução -->
   <div class="card" id="evolCard" style="margin-top:14px; padding:26px 24px 20px;">
     <div style="display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:12px;">
@@ -123,19 +137,30 @@
   </div>
 
   <div class="card rise" style="margin-top:22px; padding:26px 24px;">
-    <!-- Passo 1: PDF -->
+    <!-- Passo 1: PDFs -->
     <div id="step1">
+      <div style="font-size:12.5px; font-weight:600; color:var(--muted); margin-bottom:8px;">Bioimpedância (opcional)</div>
       <label class="dropzone" for="pdfInput">
         <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#14735A" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="margin:0 auto;"><path d="M12 16V4"></path><path d="M8 8l4-4 4 4"></path><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"></path></svg>
-        <div class="t1" id="dropTitle">Solte o PDF do exame aqui</div>
+        <div class="t1" id="dropTitle">Solte o PDF da bioimpedância</div>
         <div class="t2">ou clique para procurar no dispositivo</div>
       </label>
       <input id="pdfInput" type="file" accept="application/pdf" style="display:none;" />
+      <div id="pdfMsg" class="msg"></div>
+
+      <div style="font-size:12.5px; font-weight:600; color:var(--muted); margin:18px 0 8px;">Exame de sangue (opcional)</div>
+      <label class="dropzone" for="bloodInput">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#C0392B" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="margin:0 auto;"><path d="M12 2s5 5.5 5 10a5 5 0 0 1-10 0c0-4.5 5-10 5-10z"></path></svg>
+        <div class="t1" id="bloodTitle">Solte o PDF do exame de sangue</div>
+        <div class="t2">a IA lê os marcadores e monta sua análise</div>
+      </label>
+      <input id="bloodInput" type="file" accept="application/pdf" style="display:none;" />
+      <div id="bloodMsg" class="msg"></div>
+
       <div class="note-soft" style="margin-top:16px;">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#858B85" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex:none; margin-top:1px;"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M6 6l2 2M16 16l2 2M18 6l-2 2M8 16l-2 2"></path></svg>
-        <div>A IA lê o laudo e preenche peso, altura, % de gordura, massa magra e taxa metabólica. Você confere tudo no próximo passo.</div>
+        <div>A bioimpedância preenche peso, gordura e massa magra. O exame de sangue vira uma análise com os pontos mais importantes, na aba Análise. Os dois são opcionais.</div>
       </div>
-      <div id="pdfMsg" class="msg"></div>
     </div>
 
     <!-- Passo 2: dados -->
@@ -222,6 +247,26 @@
   </div>
 </section>
 
+<!-- ===================== ANÁLISE ===================== -->
+<section id="view-analise" class="wrap-narrow hidden">
+  <div style="display:flex; align-items:center; gap:10px;">
+    <button id="btnBackAnalise" class="btn btn-ghost" style="padding:0 13px 0 10px;">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:-2px; margin-right:4px;"><path d="M15 6l-6 6 6 6"></path></svg>
+      Voltar
+    </button>
+    <div style="flex:1;"></div>
+    <button id="btnRunAnalise" class="btn btn-primary" style="height:40px;">Atualizar análise</button>
+  </div>
+
+  <div style="margin-top:22px;">
+    <div class="serif" style="font-size:34px; line-height:1.1;">Análise dos exames</div>
+    <div style="margin-top:8px; font-size:15px; color:var(--muted); line-height:1.55;">O que a IA destacou da sua bioimpedância e do exame de sangue.</div>
+  </div>
+
+  <div id="analiseMsg" class="msg"></div>
+  <div id="analiseBody" style="margin-top:14px;"></div>
+</section>
+
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
   import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
@@ -236,7 +281,7 @@
   const EXTRA_FIELDS = ["objetivo","rotina_treino","rotina_alimentar","restricoes","telegram_chat_id"];
 
   let token = null, profile = {}, diets = [];
-  let step = 1, metric = "peso", selectedPrazo = "mensal";
+  let step = 1, metric = "peso", selectedPrazo = "mensal", bloodData = null;
 
   onAuthStateChanged(auth, async (user) => {
     if (!user) { window.location.href = "/"; return; }
@@ -268,13 +313,16 @@
 
   // ---------- navegação ----------
   function showView(name) {
-    ["home","form","dieta"].forEach((v) => $("view-" + v).classList.toggle("hidden", v !== name));
+    ["home","form","dieta","analise"].forEach((v) => $("view-" + v).classList.toggle("hidden", v !== name));
     if (name === "home") renderHome();
     window.scrollTo(0, 0);
   }
   $("btnNewDiet").onclick = () => startWizard();
   $("btnBack").onclick = () => showView("home");
   $("btnBackDiet").onclick = () => showView("home");
+  $("btnBackAnalise").onclick = () => showView("home");
+  $("btnAnalise").onclick = () => openAnalise();
+  $("btnRunAnalise").onclick = () => runAnalise();
 
   // ---------- datas / séries ----------
   function fmtDate(iso) {
@@ -313,6 +361,22 @@
     renderChart();
     renderUltima();
     renderHistorico();
+    renderAnaliseTeaser();
+  }
+
+  function renderAnaliseTeaser() {
+    const a = profile.analise;
+    const temSangue = profile.exames_sangue && (profile.exames_sangue.marcadores || []).length;
+    if (a && a.resumo) {
+      $("analiseTeaser").textContent = a.resumo.length > 120 ? a.resumo.slice(0, 120) + "…" : a.resumo;
+      $("btnAnalise").textContent = "Ver análise";
+    } else if (temSangue || profile.percentual_gordura != null) {
+      $("analiseTeaser").textContent = "Você tem dados para analisar. Gere os destaques dos seus exames.";
+      $("btnAnalise").textContent = "Gerar análise";
+    } else {
+      $("analiseTeaser").textContent = "Anexe um exame de sangue (ou preencha a bioimpedância) para receber uma análise.";
+      $("btnAnalise").textContent = "Ver análise";
+    }
   }
 
   function parseGoalLoss(txt) {
@@ -631,6 +695,74 @@
     } catch (e) { setMsg($("tgMsg"), e.message, "err"); }
   };
 
+  // ---------- ANÁLISE ----------
+  function openAnalise() {
+    setMsg($("analiseMsg"), "", "");
+    if (profile.analise && (profile.analise.destaques || profile.analise.resumo)) {
+      renderAnalise(profile.analise);
+    } else {
+      $("analiseBody").innerHTML = `<div class="card"><div class="empty">Nenhuma análise ainda. Clique em “Atualizar análise” para a IA interpretar seus exames (bioimpedância e/ou sangue).</div></div>`;
+    }
+    showView("analise");
+  }
+
+  async function runAnalise() {
+    loading($("analiseMsg"), "Analisando seus exames com IA...");
+    $("btnRunAnalise").disabled = true;
+    try {
+      const a = await api("/api/health-analysis", { method: "POST",
+        headers: { "Content-Type": "application/json" }, body: "{}" });
+      profile.analise = a;
+      setMsg($("analiseMsg"), "Análise atualizada.", "ok");
+      renderAnalise(a);
+    } catch (e) { setMsg($("analiseMsg"), e.message, "err"); }
+    finally { $("btnRunAnalise").disabled = false; }
+  }
+
+  function renderAnalise(a) {
+    if (!a || a._parse_error) { $("analiseBody").innerHTML = `<div class="card"><div class="empty">Não consegui estruturar a análise. Tente de novo.</div></div>`; return; }
+    const stMap = { bom: "Tudo bem", atencao: "Atenção", alerta: "Alerta" };
+    let html = "";
+    if (a.resumo) html += `<div class="card" style="margin-bottom:12px;"><p style="margin:0; font-size:14.5px; line-height:1.6; color:#3C4340;">${esc(a.resumo)}</p></div>`;
+    (a.destaques || []).forEach((d) => {
+      const st = ["bom","atencao","alerta"].includes(d.status) ? d.status : "atencao";
+      html += `<div class="an-item">
+        <div class="an-head">
+          <span class="an-dot d-${st}"></span>
+          <span class="an-title">${esc(d.titulo || "")}</span>
+          <span class="an-badge bg-${st}">${stMap[st]}</span>
+        </div>
+        ${d.valor ? `<div class="an-val">${esc(d.valor)}${d.origem ? " · " + esc(d.origem) : ""}</div>` : ""}
+        ${d.comentario ? `<div class="an-comment">${esc(d.comentario)}</div>` : ""}
+      </div>`;
+    });
+    if ((a.recomendacoes_dieta || []).length) {
+      html += `<div class="card" style="margin-top:12px;"><div class="card-label green"><span>Na sua dieta</span></div>
+        <ul style="margin:12px 0 0; padding-left:18px; font-size:14px; line-height:1.7; color:var(--muted);">`;
+      a.recomendacoes_dieta.forEach((r) => { html += `<li>${esc(r)}</li>`; });
+      html += `</ul></div>`;
+    }
+    html += `<div class="disclaimer" style="margin-top:14px;">${esc(a.aviso || "Interpretação gerada por IA — leve seus exames a um médico ou nutricionista.")}</div>`;
+    $("analiseBody").innerHTML = html;
+  }
+
+  // ---------- upload exame de sangue ----------
+  $("bloodInput").onchange = async () => {
+    const f = $("bloodInput").files[0];
+    if (!f) return;
+    $("bloodTitle").textContent = f.name;
+    loading($("bloodMsg"), "Lendo o exame de sangue...");
+    try {
+      const fd = new FormData(); fd.append("file", f);
+      const res = await api("/api/analyze-blood", { method: "POST", body: fd });
+      bloodData = res.data || {};
+      await api("/api/profile", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ exames_sangue: bloodData }) });
+      profile.exames_sangue = bloodData;
+      const n = (bloodData.marcadores || []).length;
+      setMsg($("bloodMsg"), `${n} marcador(es) lido(s) e salvos. A análise aparece na aba Análise.`, "ok");
+    } catch (e) { setMsg($("bloodMsg"), e.message, "err"); }
+  };
+
   // ---------- DIETA ----------
   function openDiet(id) {
     const d = diets.find((x) => x.id === id);
@@ -665,7 +797,26 @@
       });
       html += `</ul></div>`;
     });
-    if (d.observacoes) html += `<p style="font-size:13px; color:var(--muted);">${esc(d.observacoes)}</p>`;
+
+    const sub = d.substituicoes || {};
+    const grupos = [
+      ["Proteínas", sub.proteinas], ["Carboidratos", sub.carboidratos], ["Frutas", sub.frutas],
+    ].filter((g) => (g[1] || []).length);
+    if (grupos.length) {
+      html += `<div style="margin-top:20px; padding-top:16px; border-top:1px solid var(--line);">
+        <div class="serif" style="font-size:22px;">Substituições</div>
+        <div style="font-size:12.5px; color:var(--muted3); margin-top:2px;">Troque qualquer item por uma opção equivalente do mesmo grupo.</div>`;
+      grupos.forEach(([titulo, itens]) => {
+        html += `<div class="sub-group"><div class="gt">${titulo}</div><div class="sub-chips">`;
+        itens.forEach((it) => {
+          html += `<span class="sub-chip"><b>${esc(it.alimento || "")}</b> ${esc(it.porcao || "")} ${it.kcal ? `<span>${it.kcal} kcal</span>` : ""}</span>`;
+        });
+        html += `</div></div>`;
+      });
+      html += `</div>`;
+    }
+
+    if (d.observacoes) html += `<p style="font-size:13px; color:var(--muted); margin-top:16px;">${esc(d.observacoes)}</p>`;
     html += `<div class="disclaimer">${esc(d.aviso || "Sugestão gerada por IA — não substitui um nutricionista.")}</div>`;
     area.innerHTML = html;
   }
