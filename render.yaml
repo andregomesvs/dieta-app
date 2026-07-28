@@ -12,7 +12,7 @@ services:
       - key: GEMINI_API_KEY
         sync: false            # defina no painel (Secret)
       - key: GEMINI_MODEL
-        value: gemini-2.5-flash
+        value: gemini-flash-latest
       - key: GOOGLE_APPLICATION_CREDENTIALS
         value: /etc/secrets/firebase-service-account.json
       - key: FIREBASE_PROJECT_ID
