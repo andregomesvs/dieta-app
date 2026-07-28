@@ -1,8 +1,8 @@
 # Minha Dieta — v1
 
 App gratuito para gestão de dieta de perda de peso. Backend **Python (Flask)**,
-frontend **HTML/JS**, **Firebase** (Auth + Firestore) e **Claude API** para ler
-o PDF de bioimpedância e montar a dieta.
+frontend **HTML/JS**, **Firebase** (Auth + Firestore) e **Google Gemini** para
+ler o PDF de bioimpedância e montar a dieta.
 
 ## O que a v1 faz
 
@@ -48,10 +48,11 @@ dieta-app/
 6. **Configurações → Contas de serviço → Gerar nova chave privada**: salve o
    JSON como `backend/firebase-service-account.json`.
 
-### 2. Claude API
+### 2. Google Gemini
 
-1. Em [console.anthropic.com](https://console.anthropic.com/) crie uma API Key.
-2. Copie `backend/.env.example` para `backend/.env` e preencha `ANTHROPIC_API_KEY`.
+1. Em [Google AI Studio](https://aistudio.google.com/app/apikey) crie uma API Key
+   (é gratuita; use a mesma conta Google do Firebase, se quiser).
+2. Copie `backend/.env.example` para `backend/.env` e preencha `GEMINI_API_KEY`.
 
 ### 3. Backend
 
@@ -70,10 +71,11 @@ abra **http://localhost:5000** no navegador.
 
 ## Modelo de IA e custo
 
-- O modelo é configurável em `.env` (`ANTHROPIC_MODEL`). O padrão é um modelo
-  equilibrado. Para reduzir custo, troque por um modelo menor da linha Haiku.
+- O modelo é configurável em `.env` (`GEMINI_MODEL`). O padrão `gemini-1.5-flash`
+  é rápido e está no tier gratuito do Gemini.
 - Firebase Auth e Firestore têm plano gratuito (Spark) suficiente para uso
-  pessoal. A Claude API é paga por uso (poucos centavos por dieta gerada).
+  pessoal. O Gemini tem um tier gratuito com limite diário de requisições —
+  suficiente para uso pessoal.
 
 ## Dados no Firestore
 

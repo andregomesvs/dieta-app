@@ -9,11 +9,13 @@ services:
     buildCommand: pip install -r requirements.txt
     startCommand: gunicorn app:app --bind 0.0.0.0:$PORT
     envVars:
-      - key: ANTHROPIC_API_KEY
+      - key: GEMINI_API_KEY
         sync: false            # defina no painel (Secret)
-      - key: ANTHROPIC_MODEL
-        value: claude-sonnet-4-5
+      - key: GEMINI_MODEL
+        value: gemini-1.5-flash
       - key: GOOGLE_APPLICATION_CREDENTIALS
         value: /etc/secrets/firebase-service-account.json
+      - key: FIREBASE_PROJECT_ID
+        value: calendar-190c7
       - key: PYTHON_VERSION
         value: "3.12.4"

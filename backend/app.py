@@ -1,16 +1,16 @@
 """
 Dieta App - Backend Flask
 --------------------------
-Gerencia dados pessoais, leitura de PDF de bioimpedância via Claude API
+Gerencia dados pessoais, leitura de PDF de bioimpedância via Google Gemini
 e geração de dieta personalizada. Persistência em Firebase Firestore.
 
 Rotas:
   GET  /                      -> página de login
   GET  /app                   -> dashboard (protegido no front)
-  POST /api/analyze-pdf       -> recebe PDF, Claude extrai dados de bioimpedância
+  POST /api/analyze-pdf       -> recebe PDF, Gemini extrai dados de bioimpedância
   GET  /api/profile           -> retorna perfil do usuário
   POST /api/profile           -> salva/atualiza perfil
-  POST /api/generate-diet     -> gera dieta com Claude e salva
+  POST /api/generate-diet     -> gera dieta com Gemini e salva
   GET  /api/diets             -> lista dietas geradas do usuário
 
 Todas as rotas /api/* (exceto analyze-pdf sem persistência) exigem
@@ -30,15 +30,15 @@ from flask_cors import CORS
 import firebase_admin
 from firebase_admin import credentials, auth as fb_auth, firestore
 
-import anthropic
+import google.generativeai as genai
 
 load_dotenv()
 
 # ---------------------------------------------------------------------------
 # Configuração
 # ---------------------------------------------------------------------------
-ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
-ANTHROPIC_MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-4-5")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-1.5-flash")
 CRED_PATH = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "./firebase-service-account.json")
 FIREBASE_PROJECT_ID = os.environ.get("FIREBASE_PROJECT_ID", "")
 
@@ -80,12 +80,23 @@ def db():
 
 
 # ---------------------------------------------------------------------------
-# Cliente Claude
+# Cliente Gemini
 # ---------------------------------------------------------------------------
-def claude():
-    if not ANTHROPIC_API_KEY:
-        raise RuntimeError("ANTHROPIC_API_KEY não configurada no .env")
-    return anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+_gemini_ready = False
+
+
+def gemini(system_instruction=None):
+    global _gemini_ready
+    if not GEMINI_API_KEY:
+        raise RuntimeError("GEMINI_API_KEY não configurada no .env")
+    if not _gemini_ready:
+        genai.configure(api_key=GEMINI_API_KEY)
+        _gemini_ready = True
+    return genai.GenerativeModel(
+        GEMINI_MODEL,
+        system_instruction=system_instruction,
+        generation_config={"response_mime_type": "application/json"},
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -144,7 +155,7 @@ def static_files(path):
 
 @app.route("/health")
 def health():
-    return jsonify({"status": "ok", "model": ANTHROPIC_MODEL})
+    return jsonify({"status": "ok", "model": GEMINI_MODEL})
 
 
 # ---------------------------------------------------------------------------
@@ -178,39 +189,26 @@ Responda somente com o JSON."""
 @require_auth
 def analyze_pdf():
     """Recebe um PDF (multipart 'file' ou JSON base64) e extrai os dados."""
-    pdf_b64 = None
+    pdf_bytes = None
 
     if "file" in request.files:
-        pdf_b64 = base64.standard_b64encode(request.files["file"].read()).decode()
+        pdf_bytes = request.files["file"].read()
     else:
         data = request.get_json(silent=True) or {}
-        pdf_b64 = data.get("pdf_base64")
+        if data.get("pdf_base64"):
+            pdf_bytes = base64.standard_b64decode(data["pdf_base64"])
 
-    if not pdf_b64:
+    if not pdf_bytes:
         return jsonify({"error": "Nenhum PDF enviado"}), 400
 
     try:
-        msg = claude().messages.create(
-            model=ANTHROPIC_MODEL,
-            max_tokens=1500,
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "document",
-                            "source": {
-                                "type": "base64",
-                                "media_type": "application/pdf",
-                                "data": pdf_b64,
-                            },
-                        },
-                        {"type": "text", "text": PDF_EXTRACT_PROMPT},
-                    ],
-                }
-            ],
+        resp = gemini().generate_content(
+            [
+                {"mime_type": "application/pdf", "data": pdf_bytes},
+                PDF_EXTRACT_PROMPT,
+            ]
         )
-        raw = msg.content[0].text.strip()
+        raw = (resp.text or "").strip()
         parsed = _safe_json(raw)
         return jsonify({"data": parsed, "raw": raw})
     except Exception as e:  # noqa: BLE001
@@ -287,13 +285,8 @@ Restrições / preferências alimentares: {restricoes or "nenhuma informada"}
 Monte a dieta seguindo o formato JSON solicitado."""
 
     try:
-        msg = claude().messages.create(
-            model=ANTHROPIC_MODEL,
-            max_tokens=3000,
-            system=DIET_SYSTEM,
-            messages=[{"role": "user", "content": user_msg}],
-        )
-        raw = msg.content[0].text.strip()
+        resp = gemini(system_instruction=DIET_SYSTEM).generate_content(user_msg)
+        raw = (resp.text or "").strip()
         dieta = _safe_json(raw)
 
         registro = {
