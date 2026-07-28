@@ -40,6 +40,7 @@ load_dotenv()
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
 ANTHROPIC_MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-4-5")
 CRED_PATH = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "./firebase-service-account.json")
+FIREBASE_PROJECT_ID = os.environ.get("FIREBASE_PROJECT_ID", "")
 
 FRONTEND_DIR = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "..", "frontend")
@@ -59,9 +60,16 @@ def init_firebase():
     if os.path.exists(CRED_PATH):
         cred = credentials.Certificate(CRED_PATH)
         firebase_admin.initialize_app(cred)
+        print(f"[firebase] inicializado com service account: {CRED_PATH}")
     else:
-        # Em ambientes gerenciados (Cloud Run, etc.) usa credencial padrão
-        firebase_admin.initialize_app()
+        # Sem o arquivo de credencial. Sem ele o Firestore não funciona;
+        # deixamos ao menos o project ID explícito para verificar tokens.
+        print(
+            f"[firebase] AVISO: credencial NÃO encontrada em '{CRED_PATH}'. "
+            "Configure o Secret File no Render. Firestore ficará indisponível."
+        )
+        opts = {"projectId": FIREBASE_PROJECT_ID} if FIREBASE_PROJECT_ID else None
+        firebase_admin.initialize_app(options=opts)
     _db = firestore.client()
 
 
