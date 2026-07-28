@@ -307,6 +307,8 @@ Monte a dieta seguindo o formato JSON solicitado."""
         dieta = _safe_json(raw)
 
         registro = {
+            "nome": perfil.get("nome") or (g.email or "").split("@")[0],
+            "perfil": perfil,
             "objetivo": objetivo,
             "prazo": prazo,
             "dieta": dieta,

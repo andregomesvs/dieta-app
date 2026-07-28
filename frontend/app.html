@@ -8,81 +8,109 @@
 </head>
 <body>
   <div class="wrap">
-    <div class="row">
+    <div class="row no-print">
       <div class="brand"><span class="dot"></span> Minha Dieta</div>
       <div class="spacer"></div>
       <span id="userEmail" class="badge"></span>
       <button id="btnLogout" class="secondary">Sair</button>
     </div>
-    <p class="subtitle">Preencha seus dados (ou importe do PDF da bioimpedância) e gere sua dieta.</p>
 
-    <!-- 1. Importar PDF -->
-    <div class="card">
-      <h2>1. Importar bioimpedância (opcional)</h2>
-      <p class="hint">Anexe o PDF do exame. A IA lê e preenche o formulário automaticamente.</p>
-      <input id="pdfInput" type="file" accept="application/pdf" />
-      <div style="height:12px"></div>
-      <button id="btnAnalyze" class="secondary">Analisar PDF e preencher</button>
-      <div id="pdfMsg" class="msg"></div>
-    </div>
+    <!-- ===================== INÍCIO / PERFIL ===================== -->
+    <section id="view-home" class="hidden">
+      <p class="subtitle" id="hello">Meu perfil</p>
 
-    <!-- 2. Dados pessoais -->
-    <div class="card">
-      <h2>2. Dados pessoais</h2>
-      <p class="hint">Confira/edite os dados antes de gerar a dieta.</p>
-      <div class="grid2">
-        <div><label>Nome</label><input id="nome" /></div>
-        <div><label>Sexo</label>
-          <select id="sexo">
-            <option value="">—</option>
-            <option value="masculino">Masculino</option>
-            <option value="feminino">Feminino</option>
-          </select>
+      <div class="card">
+        <h2>Meu perfil</h2>
+        <div id="profileSummary"></div>
+        <div style="height:14px"></div>
+        <button id="btnGoCriar">Criar / atualizar perfil</button>
+      </div>
+
+      <div class="card">
+        <h2>Última dieta</h2>
+        <div id="lastDiet"></div>
+      </div>
+
+      <div class="card">
+        <h2>Histórico</h2>
+        <p class="hint">Cada dieta gerada fica salva aqui. Clique para abrir.</p>
+        <div id="history"></div>
+      </div>
+    </section>
+
+    <!-- ===================== CRIAR PERFIL ===================== -->
+    <section id="view-criar" class="hidden">
+      <div class="row no-print">
+        <button id="btnBackHome1" class="secondary">← Voltar</button>
+      </div>
+      <p class="subtitle">Preencha seus dados (ou importe do PDF da bioimpedância) e gere sua dieta.</p>
+
+      <div class="card">
+        <h2>1. Importar bioimpedância (opcional)</h2>
+        <p class="hint">Anexe o PDF do exame. A IA lê e preenche o formulário automaticamente.</p>
+        <input id="pdfInput" type="file" accept="application/pdf" />
+        <div style="height:12px"></div>
+        <button id="btnAnalyze" class="secondary">Analisar PDF e preencher</button>
+        <div id="pdfMsg" class="msg"></div>
+      </div>
+
+      <div class="card">
+        <h2>2. Dados pessoais</h2>
+        <div class="grid2">
+          <div><label>Nome</label><input id="nome" /></div>
+          <div><label>Sexo</label>
+            <select id="sexo">
+              <option value="">—</option>
+              <option value="masculino">Masculino</option>
+              <option value="feminino">Feminino</option>
+            </select>
+          </div>
+          <div><label>Idade</label><input id="idade" type="number" /></div>
+          <div><label>Altura (cm)</label><input id="altura_cm" type="number" /></div>
+          <div><label>Peso (kg)</label><input id="peso_kg" type="number" step="0.1" /></div>
+          <div><label>% Gordura</label><input id="percentual_gordura" type="number" step="0.1" /></div>
+          <div><label>Massa magra (kg)</label><input id="massa_magra_kg" type="number" step="0.1" /></div>
+          <div><label>Taxa metabólica basal (kcal)</label><input id="taxa_metabolica_basal_kcal" type="number" /></div>
         </div>
-        <div><label>Idade</label><input id="idade" type="number" /></div>
-        <div><label>Altura (cm)</label><input id="altura_cm" type="number" /></div>
-        <div><label>Peso (kg)</label><input id="peso_kg" type="number" step="0.1" /></div>
-        <div><label>% Gordura</label><input id="percentual_gordura" type="number" step="0.1" /></div>
-        <div><label>Massa magra (kg)</label><input id="massa_magra_kg" type="number" step="0.1" /></div>
-        <div><label>Taxa metabólica basal (kcal)</label><input id="taxa_metabolica_basal_kcal" type="number" /></div>
+        <div style="height:12px"></div>
+        <button id="btnSaveProfile" class="secondary">Salvar dados</button>
+        <div id="profileMsg" class="msg"></div>
+      </div>
+
+      <div class="card">
+        <h2>3. Objetivo e rotina</h2>
+        <label>Objetivo</label>
+        <input id="objetivo" placeholder="Ex.: perder 8 kg mantendo massa muscular" />
+        <label>Prazo</label>
+        <select id="prazo">
+          <option value="mensal">Mensal</option>
+          <option value="trimestral">Trimestral</option>
+          <option value="anual">Anual</option>
+        </select>
+        <label>Rotina de treino (com horários)</label>
+        <textarea id="rotina_treino" placeholder="Ex.: musculação seg/qua/sex 19h; corrida ter/qui 7h"></textarea>
+        <label>Rotina alimentar atual e horários</label>
+        <textarea id="rotina_alimentar" placeholder="Ex.: café 7h, almoço 12h30, lanche 16h, jantar 20h"></textarea>
+        <label>Restrições / preferências (opcional)</label>
+        <textarea id="restricoes" placeholder="Ex.: sem lactose, não como peixe, orçamento baixo"></textarea>
+        <div style="height:14px"></div>
+        <button id="btnGenerate">Gerar minha dieta</button>
+        <div id="dietMsg" class="msg"></div>
+      </div>
+    </section>
+
+    <!-- ===================== DIETA ===================== -->
+    <section id="view-dieta" class="hidden">
+      <div class="row no-print">
+        <button id="btnBackHome2" class="secondary">← Voltar</button>
+        <div class="spacer"></div>
+        <button id="btnExportPdf">⬇ Exportar PDF</button>
       </div>
       <div style="height:12px"></div>
-      <button id="btnSaveProfile" class="secondary">Salvar dados</button>
-      <div id="profileMsg" class="msg"></div>
-    </div>
-
-    <!-- 3. Objetivo e rotina -->
-    <div class="card">
-      <h2>3. Objetivo e rotina</h2>
-      <label>Objetivo</label>
-      <input id="objetivo" placeholder="Ex.: perder 8 kg mantendo massa muscular" />
-
-      <label>Prazo</label>
-      <select id="prazo">
-        <option value="mensal">Mensal</option>
-        <option value="trimestral">Trimestral</option>
-        <option value="anual">Anual</option>
-      </select>
-
-      <label>Rotina de treino (com horários)</label>
-      <textarea id="rotina_treino" placeholder="Ex.: musculação seg/qua/sex 19h; corrida ter/qui 7h"></textarea>
-
-      <label>Rotina alimentar atual e horários</label>
-      <textarea id="rotina_alimentar" placeholder="Ex.: café 7h, almoço 12h30, lanche 16h, jantar 20h. Como pouco no café."></textarea>
-
-      <label>Restrições / preferências (opcional)</label>
-      <textarea id="restricoes" placeholder="Ex.: sem lactose, não como peixe, orçamento baixo"></textarea>
-
-      <div style="height:14px"></div>
-      <button id="btnGenerate">Gerar minha dieta</button>
-      <div id="dietMsg" class="msg"></div>
-    </div>
-
-    <!-- 4. Resultado -->
-    <div id="dietResult" class="card hidden">
-      <h2>Sua dieta</h2>
-      <div id="dietContent"></div>
-    </div>
+      <div class="card">
+        <div id="printArea"></div>
+      </div>
+    </section>
   </div>
 
   <script type="module">
@@ -96,18 +124,34 @@
 
     const PROFILE_FIELDS = ["nome","sexo","idade","altura_cm","peso_kg",
       "percentual_gordura","massa_magra_kg","taxa_metabolica_basal_kcal"];
+    const EXTRA_FIELDS = ["objetivo","prazo","rotina_treino","rotina_alimentar","restricoes"];
 
     let token = null;
+    let profile = {};
+    let diets = [];
 
     onAuthStateChanged(auth, async (user) => {
       if (!user) { window.location.href = "/"; return; }
       $("userEmail").textContent = user.email;
       token = await user.getIdToken();
-      loadProfile();
+      await Promise.all([loadProfile(), loadDiets()]);
+      showView("home");
     });
 
     $("btnLogout").onclick = () => signOut(auth);
 
+    // ---------- navegação ----------
+    function showView(name) {
+      ["home","criar","dieta"].forEach((v) =>
+        $("view-" + v).classList.toggle("hidden", v !== name));
+      if (name === "home") renderHome();
+      window.scrollTo(0, 0);
+    }
+    $("btnGoCriar").onclick = () => { fillForm(); showView("criar"); };
+    $("btnBackHome1").onclick = () => showView("home");
+    $("btnBackHome2").onclick = () => showView("home");
+
+    // ---------- API ----------
     async function api(path, opts = {}) {
       opts.headers = Object.assign({ "Authorization": "Bearer " + token }, opts.headers || {});
       const r = await fetch(API_BASE + path, opts);
@@ -117,47 +161,83 @@
       }
       return r.json();
     }
-
-    function setMsg(el, text, kind) {
-      el.className = "msg" + (kind ? " " + kind : "");
-      el.innerHTML = text;
-    }
+    function setMsg(el, text, kind) { el.className = "msg" + (kind ? " " + kind : ""); el.innerHTML = text; }
     function loading(el, text) { setMsg(el, '<span class="loader"></span>' + text, ""); }
 
-    // --- perfil ---
     async function loadProfile() {
-      try {
-        const p = await api("/api/profile");
-        PROFILE_FIELDS.forEach((f) => { if (p[f] != null) $(f).value = p[f]; });
-        ["objetivo","prazo","rotina_treino","rotina_alimentar","restricoes"]
-          .forEach((f) => { if (p[f] != null) $(f).value = p[f]; });
-      } catch (e) { /* silencioso no primeiro acesso */ }
+      try { profile = await api("/api/profile"); } catch (e) { profile = {}; }
+    }
+    async function loadDiets() {
+      try { diets = await api("/api/diets"); } catch (e) { diets = []; }
     }
 
+    // ---------- INÍCIO / perfil ----------
+    function fmtDate(iso) {
+      if (!iso) return "";
+      const d = new Date(iso);
+      return d.toLocaleDateString("pt-BR") + " " + d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+    }
+    function renderHome() {
+      const nome = profile.nome || (auth.currentUser.email || "").split("@")[0];
+      $("hello").textContent = "Olá, " + nome;
+
+      const linha = (rot, val) => `<div class="profile-line"><span>${rot}</span><b>${val || "—"}</b></div>`;
+      $("profileSummary").innerHTML =
+        linha("Nome", profile.nome) +
+        linha("Idade", profile.idade ? profile.idade + " anos" : "") +
+        linha("Objetivo", profile.objetivo);
+
+      if (diets.length) {
+        const d = diets[0];
+        $("lastDiet").innerHTML =
+          `<div class="hist-item" data-id="${d.id}">
+             <div><div class="name">Dieta de ${escapeHtml(d.nome || nome)}</div>
+             <div class="date">${fmtDate(d.criado_em)} · ${escapeHtml(d.objetivo || "")}</div></div>
+             <span class="badge">abrir →</span></div>`;
+      } else {
+        $("lastDiet").innerHTML = `<p class="empty">Dieta não gerada.</p>`;
+      }
+
+      if (diets.length) {
+        $("history").innerHTML = diets.map((d) =>
+          `<div class="hist-item" data-id="${d.id}">
+             <div><div class="name">perfil-${escapeHtml(d.nome || nome)}-${fmtDate(d.criado_em).split(" ")[0]}</div>
+             <div class="date">${fmtDate(d.criado_em)} · ${escapeHtml(d.objetivo || "")}</div></div>
+             <span class="badge">abrir →</span></div>`).join("");
+      } else {
+        $("history").innerHTML = `<p class="empty">Nenhuma dieta no histórico ainda.</p>`;
+      }
+
+      document.querySelectorAll(".hist-item").forEach((el) => {
+        el.onclick = () => openDiet(el.getAttribute("data-id"));
+      });
+    }
+
+    // ---------- CRIAR perfil (form) ----------
+    function fillForm() {
+      PROFILE_FIELDS.forEach((f) => { $(f).value = profile[f] != null ? profile[f] : ""; });
+      EXTRA_FIELDS.forEach((f) => { $(f).value = profile[f] != null ? profile[f] : ""; });
+    }
     function collectProfile() {
       const p = {};
       PROFILE_FIELDS.forEach((f) => {
         const v = $(f).value.trim();
-        if (v !== "") p[f] = isNaN(v) || f === "nome" || f === "sexo" ? v : Number(v);
+        if (v !== "") p[f] = (f === "nome" || f === "sexo" || isNaN(v)) ? v : Number(v);
       });
-      ["objetivo","prazo","rotina_treino","rotina_alimentar","restricoes"]
-        .forEach((f) => { p[f] = $(f).value.trim(); });
+      EXTRA_FIELDS.forEach((f) => { p[f] = $(f).value.trim(); });
       return p;
     }
 
     $("btnSaveProfile").onclick = async () => {
       loading($("profileMsg"), "Salvando...");
       try {
-        await api("/api/profile", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(collectProfile()),
-        });
+        profile = Object.assign(profile, collectProfile());
+        await api("/api/profile", { method: "POST",
+          headers: { "Content-Type": "application/json" }, body: JSON.stringify(collectProfile()) });
         setMsg($("profileMsg"), "Dados salvos.", "ok");
       } catch (e) { setMsg($("profileMsg"), e.message, "err"); }
     };
 
-    // --- PDF ---
     $("btnAnalyze").onclick = async () => {
       const file = $("pdfInput").files[0];
       if (!file) { setMsg($("pdfMsg"), "Selecione um PDF.", "err"); return; }
@@ -170,62 +250,66 @@
         const d = res.data || {};
         PROFILE_FIELDS.forEach((f) => { if (d[f] != null) $(f).value = d[f]; });
         setMsg($("pdfMsg"), "Dados extraídos e preenchidos. Confira acima.", "ok");
-      } catch (e) {
-        setMsg($("pdfMsg"), e.message, "err");
-      } finally { $("btnAnalyze").disabled = false; }
+      } catch (e) { setMsg($("pdfMsg"), e.message, "err"); }
+      finally { $("btnAnalyze").disabled = false; }
     };
 
-    // --- gerar dieta ---
     $("btnGenerate").onclick = async () => {
       if (!$("objetivo").value.trim()) { setMsg($("dietMsg"), "Informe seu objetivo.", "err"); return; }
       loading($("dietMsg"), "Montando sua dieta... (pode levar alguns segundos)");
       $("btnGenerate").disabled = true;
       try {
-        // salva o perfil junto
         const perfil = collectProfile();
-        await api("/api/profile", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(perfil),
-        });
-        const res = await api("/api/generate-diet", {
-          method: "POST",
+        await api("/api/profile", { method: "POST",
+          headers: { "Content-Type": "application/json" }, body: JSON.stringify(perfil) });
+        const res = await api("/api/generate-diet", { method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            perfil,
-            objetivo: $("objetivo").value.trim(),
-            prazo: $("prazo").value,
+            perfil, objetivo: $("objetivo").value.trim(), prazo: $("prazo").value,
             rotina_treino: $("rotina_treino").value.trim(),
             rotina_alimentar: $("rotina_alimentar").value.trim(),
             restricoes: $("restricoes").value.trim(),
-          }),
-        });
-        renderDiet(res.dieta);
+          }) });
+        profile = Object.assign(profile, perfil);
+        await loadDiets();
         setMsg($("dietMsg"), "Dieta gerada e salva.", "ok");
-      } catch (e) {
-        setMsg($("dietMsg"), e.message, "err");
-      } finally { $("btnGenerate").disabled = false; }
+        renderDiet(res.dieta, res);
+        showView("dieta");
+      } catch (e) { setMsg($("dietMsg"), e.message, "err"); }
+      finally { $("btnGenerate").disabled = false; }
     };
 
-    function renderDiet(d) {
+    // ---------- DIETA ----------
+    function openDiet(id) {
+      const d = diets.find((x) => x.id === id);
+      if (!d) return;
+      renderDiet(d.dieta, d);
+      showView("dieta");
+    }
+
+    $("btnExportPdf").onclick = () => window.print();
+
+    function renderDiet(d, meta) {
+      const area = $("printArea");
+      const nome = (meta && meta.nome) || profile.nome || "";
+      const data = fmtDate(meta && meta.criado_em) || new Date().toLocaleDateString("pt-BR");
       if (!d || d._parse_error) {
-        $("dietContent").innerHTML = "<p>Não consegui estruturar a resposta. Tente novamente.</p><pre>" +
+        area.innerHTML = "<h2>Dieta</h2><p>Não consegui estruturar a resposta.</p><pre>" +
           (d && d.conteudo ? escapeHtml(d.conteudo) : "") + "</pre>";
-        $("dietResult").classList.remove("hidden");
         return;
       }
       const m = d.macros_dia || {};
-      let html = "";
+      let html = `<h2 style="margin-bottom:2px">Dieta${nome ? " — " + escapeHtml(nome) : ""}</h2>
+        <p class="hint">${data}${meta && meta.objetivo ? " · " + escapeHtml(meta.objetivo) : ""}</p>`;
       if (d.resumo) html += `<p>${escapeHtml(d.resumo)}</p>`;
       html += `<div class="totals">
         <div class="box"><b>${d.calorias_alvo_dia ?? "—"}</b><small>kcal/dia</small></div>
         <div class="box"><b>${m.proteina_g ?? "—"}g</b><small>proteína</small></div>
         <div class="box"><b>${m.carbo_g ?? "—"}g</b><small>carbo</small></div>
-        <div class="box"><b>${m.gordura_g ?? "—"}g</b><small>gordura</small></div>
-      </div>`;
+        <div class="box"><b>${m.gordura_g ?? "—"}g</b><small>gordura</small></div></div>`;
       (d.refeicoes || []).forEach((r) => {
-        html += `<div class="meal">
-          <div class="meal-head"><span class="h">${escapeHtml(r.nome || "")}</span>
+        html += `<div class="meal"><div class="meal-head">
+          <span class="h">${escapeHtml(r.nome || "")}</span>
           <span class="t">${escapeHtml(r.horario || "")} · ${r.kcal_total ?? "?"} kcal</span></div><ul>`;
         (r.itens || []).forEach((it) => {
           html += `<li>${escapeHtml(it.alimento || "")} <span>— ${escapeHtml(it.porcao || "")}${it.kcal ? " · " + it.kcal + " kcal" : ""}</span></li>`;
@@ -234,15 +318,12 @@
       });
       if (d.observacoes) html += `<p class="hint">${escapeHtml(d.observacoes)}</p>`;
       html += `<div class="disclaimer">${escapeHtml(d.aviso || "Sugestão gerada por IA — não substitui um nutricionista.")}</div>`;
-      $("dietContent").innerHTML = html;
-      $("dietResult").classList.remove("hidden");
-      $("dietResult").scrollIntoView({ behavior: "smooth" });
+      area.innerHTML = html;
     }
 
     function escapeHtml(s) {
-      return String(s).replace(/[&<>"']/g, (c) => (
-        { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]
-      ));
+      return String(s == null ? "" : s).replace(/[&<>"']/g, (c) =>
+        ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
     }
   </script>
 </body>

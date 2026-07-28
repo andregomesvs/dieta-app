@@ -99,5 +99,30 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 
 .center { text-align: center; }
 .hidden { display: none !important; }
+
+/* Perfil / início */
+.profile-line { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 14px; }
+.profile-line:last-child { border-bottom: none; }
+.profile-line span { color: var(--muted); }
+
+.hist-item { display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; margin-bottom: 8px;
+  background: var(--card-2); cursor: pointer; transition: .15s; }
+.hist-item:hover { border-color: var(--accent); }
+.hist-item .name { font-weight: 600; font-size: 14px; }
+.hist-item .date { color: var(--muted); font-size: 12px; }
+.empty { color: var(--muted); font-size: 14px; font-style: italic; }
+
+/* Impressão em PDF: mostra só a área da dieta */
+@media print {
+  body { background: #fff; color: #000; }
+  body * { visibility: hidden; }
+  #printArea, #printArea * { visibility: visible; }
+  #printArea { position: absolute; left: 0; top: 0; width: 100%; padding: 0 8px; }
+  #printArea .meal, #printArea .totals .box { border-color: #ccc; background: #fff; }
+  #printArea .meal { background: #fafafa; }
+  #printArea .disclaimer { color: #444; }
+  .no-print { display: none !important; }
+}
 .loader { display: inline-block; width: 16px; height: 16px; border: 2px solid #06210f; border-top-color: transparent; border-radius: 50%; animation: spin .7s linear infinite; vertical-align: -3px; margin-right: 6px; }
 @keyframes spin { to { transform: rotate(360deg); } }
