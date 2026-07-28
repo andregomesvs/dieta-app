@@ -86,6 +86,13 @@ def claude():
 app = Flask(__name__, static_folder=None)
 CORS(app)
 
+# Inicializa o Firebase já na importação do módulo — necessário quando o app
+# roda sob gunicorn (Render), onde o bloco __main__ não é executado.
+try:
+    init_firebase()
+except Exception as _e:  # noqa: BLE001
+    print("Aviso: Firebase não inicializado na importação:", _e)
+
 
 def require_auth(f):
     """Valida o Firebase ID Token enviado no header Authorization."""
@@ -96,6 +103,8 @@ def require_auth(f):
         if not header.startswith("Bearer "):
             return jsonify({"error": "Token ausente"}), 401
         token = header.split(" ", 1)[1]
+        if not firebase_admin._apps:
+            init_firebase()
         try:
             decoded = fb_auth.verify_id_token(token)
             g.uid = decoded["uid"]
