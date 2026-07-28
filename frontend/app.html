@@ -4,390 +4,671 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Minha Dieta</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/static/css/style.css" />
 </head>
 <body>
-  <div class="wrap">
-    <div class="row no-print">
-      <div class="brand"><span class="dot"></span> Minha Dieta</div>
-      <div class="spacer"></div>
-      <span id="userEmail" class="badge"></span>
-      <button id="btnLogout" class="secondary">Sair</button>
+
+<!-- ===================== HOME ===================== -->
+<section id="view-home" class="wrap hidden">
+  <header class="topbar">
+    <div class="brand">
+      <svg class="logo" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 3v9l6 3"></path></svg>
+      <div class="name">Minha Dieta</div>
     </div>
-
-    <!-- ===================== INÍCIO / PERFIL ===================== -->
-    <section id="view-home" class="hidden">
-      <p class="subtitle" id="hello">Meu perfil</p>
-
-      <div class="card">
-        <h2>Meu perfil</h2>
-        <div id="profileSummary"></div>
-        <div style="height:14px"></div>
-        <button id="btnGoCriar">Criar / atualizar perfil</button>
+    <div style="display:flex; align-items:center; gap:8px;">
+      <div class="userchip">
+        <span class="email" id="userEmail"></span>
+        <span class="avatar" id="userAvatar"></span>
       </div>
+      <button id="btnLogout" class="btn btn-ghost">Sair</button>
+    </div>
+  </header>
 
-      <div class="card">
-        <h2>Última dieta</h2>
-        <div id="lastDiet"></div>
-      </div>
-
-      <div class="card">
-        <h2>Histórico</h2>
-        <p class="hint">Cada dieta gerada fica salva aqui. Clique para abrir.</p>
-        <div id="history"></div>
-      </div>
-    </section>
-
-    <!-- ===================== CRIAR PERFIL ===================== -->
-    <section id="view-criar" class="hidden">
-      <div class="row no-print">
-        <button id="btnBackHome1" class="secondary">← Voltar</button>
-      </div>
-      <p class="subtitle">Preencha seus dados (ou importe do PDF da bioimpedância) e gere sua dieta.</p>
-
-      <div class="card">
-        <h2>1. Importar bioimpedância (opcional)</h2>
-        <p class="hint">Anexe o PDF do exame. A IA lê e preenche o formulário automaticamente.</p>
-        <input id="pdfInput" type="file" accept="application/pdf" />
-        <div style="height:12px"></div>
-        <button id="btnAnalyze" class="secondary">Analisar PDF e preencher</button>
-        <div id="pdfMsg" class="msg"></div>
-      </div>
-
-      <div class="card">
-        <h2>2. Dados pessoais</h2>
-        <div class="grid2">
-          <div><label>Nome</label><input id="nome" /></div>
-          <div><label>Sexo</label>
-            <select id="sexo">
-              <option value="">—</option>
-              <option value="masculino">Masculino</option>
-              <option value="feminino">Feminino</option>
-            </select>
-          </div>
-          <div><label>Idade</label><input id="idade" type="number" /></div>
-          <div><label>Altura (cm)</label><input id="altura_cm" type="number" /></div>
-          <div><label>Peso (kg)</label><input id="peso_kg" type="number" step="0.1" /></div>
-          <div><label>% Gordura</label><input id="percentual_gordura" type="number" step="0.1" /></div>
-          <div><label>Massa magra (kg)</label><input id="massa_magra_kg" type="number" step="0.1" /></div>
-          <div><label>Taxa metabólica basal (kcal)</label><input id="taxa_metabolica_basal_kcal" type="number" /></div>
-        </div>
-        <div style="height:12px"></div>
-        <button id="btnSaveProfile" class="secondary">Salvar dados</button>
-        <div id="profileMsg" class="msg"></div>
-      </div>
-
-      <div class="card">
-        <h2>3. Objetivo e rotina</h2>
-        <label>Objetivo</label>
-        <input id="objetivo" placeholder="Ex.: perder 8 kg mantendo massa muscular" />
-        <label>Prazo</label>
-        <select id="prazo">
-          <option value="mensal">Mensal</option>
-          <option value="trimestral">Trimestral</option>
-          <option value="anual">Anual</option>
-        </select>
-        <label>Rotina de treino (com horários)</label>
-        <textarea id="rotina_treino" placeholder="Ex.: musculação seg/qua/sex 19h; corrida ter/qui 7h"></textarea>
-        <label>Rotina alimentar atual e horários</label>
-        <textarea id="rotina_alimentar" placeholder="Ex.: café 7h, almoço 12h30, lanche 16h, jantar 20h"></textarea>
-        <label>Restrições / preferências (opcional)</label>
-        <textarea id="restricoes" placeholder="Ex.: sem lactose, não como peixe, orçamento baixo"></textarea>
-        <div style="height:14px"></div>
-        <button id="btnGenerate">Gerar minha dieta</button>
-        <div id="dietMsg" class="msg"></div>
-      </div>
-
-      <div class="card">
-        <h2>4. Lembretes no Telegram (opcional)</h2>
-        <p class="hint">Receba cada refeição no horário certo. Faça uma vez:</p>
-        <ol style="font-size:13px;color:var(--muted);line-height:1.7;margin:0 0 6px;padding-left:18px">
-          <li>No Telegram, abra o bot <a href="https://t.me/minhadietazbot" target="_blank"><b>@minhadietazbot</b></a> e toque em <b>Iniciar</b> (ou envie "oi").</li>
-          <li>Volte aqui e clique em <b>Detectar meu Telegram</b>.</li>
-          <li>Clique em <b>Enviar teste</b> para confirmar.</li>
-        </ol>
-        <label>Meu chat ID do Telegram</label>
-        <input id="telegram_chat_id" placeholder="ex.: 123456789" />
-        <div style="height:10px"></div>
-        <div class="row">
-          <button id="btnTgDetect" class="secondary">Detectar meu Telegram</button>
-          <button id="btnTgTest" class="secondary">Enviar teste</button>
-          <button id="btnTgSave" class="secondary">Salvar</button>
-        </div>
-        <div id="tgMsg" class="msg"></div>
-      </div>
-    </section>
-
-    <!-- ===================== DIETA ===================== -->
-    <section id="view-dieta" class="hidden">
-      <div class="row no-print">
-        <button id="btnBackHome2" class="secondary">← Voltar</button>
-        <div class="spacer"></div>
-        <button id="btnExportPdf">⬇ Exportar PDF</button>
-      </div>
-      <div style="height:12px"></div>
-      <div class="card">
-        <div id="printArea"></div>
-      </div>
-    </section>
+  <div style="display:flex; flex-wrap:wrap; align-items:flex-end; justify-content:space-between; gap:16px; padding-bottom:22px;">
+    <div>
+      <div class="serif" id="greeting" style="font-size:38px; line-height:1.05;"></div>
+      <div id="subline" style="margin-top:8px; font-size:15px; color:var(--muted);"></div>
+    </div>
+    <button id="btnNewDiet" class="btn btn-primary">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>
+      Gerar nova dieta
+    </button>
   </div>
 
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-    import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-    import { firebaseConfig, API_BASE } from "/static/js/firebase-config.js";
+  <div class="grid-auto">
+    <!-- Peso / meta -->
+    <div class="card">
+      <div class="card-label green">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"></circle><circle cx="12" cy="12" r="3.4"></circle></svg>
+        <span>Rumo à meta</span>
+      </div>
+      <div id="metaBody"></div>
+    </div>
 
-    const app = initializeApp(firebaseConfig);
-    const auth = getAuth(app);
-    const $ = (id) => document.getElementById(id);
+    <!-- Composição -->
+    <div class="card">
+      <div class="card-label">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="7" r="3.4"></circle><path d="M5.5 20a6.5 6.5 0 0 1 13 0"></path></svg>
+        <span>Composição corporal</span>
+      </div>
+      <div id="compBody" style="margin-top:18px;"></div>
+    </div>
 
-    const PROFILE_FIELDS = ["nome","sexo","idade","altura_cm","peso_kg",
-      "percentual_gordura","massa_magra_kg","taxa_metabolica_basal_kcal"];
-    const EXTRA_FIELDS = ["objetivo","prazo","rotina_treino","rotina_alimentar","restricoes","telegram_chat_id"];
+    <!-- Plano de hoje -->
+    <div class="card">
+      <div class="card-label">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3v8a2.5 2.5 0 0 0 5 0V3M8.5 11v10"></path><path d="M17 3c-1.4 1.6-2 3.4-2 5.5 0 1.6.7 2.6 2 3V21"></path></svg>
+        <span>Plano de hoje</span>
+      </div>
+      <div id="planoBody"></div>
+    </div>
+  </div>
 
-    let token = null;
-    let profile = {};
-    let diets = [];
+  <!-- Evolução -->
+  <div class="card" id="evolCard" style="margin-top:14px; padding:26px 24px 20px;">
+    <div style="display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:12px;">
+      <div>
+        <div class="card-title">Evolução</div>
+        <div id="evolSub" style="margin-top:2px; font-size:12.5px; color:var(--muted3);"></div>
+      </div>
+      <div class="seg-wrap" id="segWrap">
+        <button class="seg active" data-metric="peso">Peso</button>
+        <button class="seg" data-metric="gordura">Gordura</button>
+        <button class="seg" data-metric="magra">Massa magra</button>
+      </div>
+    </div>
+    <div id="evolChart" style="margin-top:22px;"></div>
+  </div>
 
-    onAuthStateChanged(auth, async (user) => {
-      if (!user) { window.location.href = "/"; return; }
-      $("userEmail").textContent = user.email;
-      token = await user.getIdToken();
-      await Promise.all([loadProfile(), loadDiets()]);
-      showView("home");
+  <div class="grid-auto wide" style="margin-top:14px;">
+    <div class="card">
+      <div style="display:flex; align-items:baseline; justify-content:space-between; gap:10px;">
+        <div class="card-title">Última dieta</div>
+        <a href="#" id="openLast" style="font-size:13px; font-weight:600; display:flex; align-items:center; gap:4px;">Abrir
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"></path></svg>
+        </a>
+      </div>
+      <div id="lastDietSub" style="margin-top:3px; font-size:12px; color:var(--muted3); font-family:'JetBrains Mono',monospace;"></div>
+      <div id="lastDietBody" style="margin-top:12px;"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Histórico</div>
+      <div style="margin-top:3px; font-size:12.5px; color:var(--muted3);">Toda dieta gerada fica salva aqui.</div>
+      <div id="historyBody" style="margin-top:16px; display:grid; gap:8px;"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== FORM (wizard) ===================== -->
+<section id="view-form" class="wrap-narrow hidden">
+  <div style="display:flex; align-items:center; justify-content:space-between; gap:14px;">
+    <button id="btnBack" class="btn btn-ghost" style="padding:0 13px 0 10px;">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:-2px; margin-right:4px;"><path d="M15 6l-6 6 6 6"></path></svg>
+      Voltar
+    </button>
+    <div class="step-counter" id="stepCounter"></div>
+  </div>
+
+  <div style="margin-top:24px;">
+    <div class="serif" id="stepTitle" style="font-size:34px; line-height:1.1;"></div>
+    <div id="stepSub" style="margin-top:8px; font-size:15px; line-height:1.55; color:var(--muted);"></div>
+  </div>
+
+  <div class="steps-bar" id="stepsBar" style="margin-top:22px;">
+    <div class="step-dot"></div><div class="step-dot"></div><div class="step-dot"></div><div class="step-dot"></div>
+  </div>
+
+  <div class="card rise" style="margin-top:22px; padding:26px 24px;">
+    <!-- Passo 1: PDF -->
+    <div id="step1">
+      <label class="dropzone" for="pdfInput">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#14735A" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="margin:0 auto;"><path d="M12 16V4"></path><path d="M8 8l4-4 4 4"></path><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"></path></svg>
+        <div class="t1" id="dropTitle">Solte o PDF do exame aqui</div>
+        <div class="t2">ou clique para procurar no dispositivo</div>
+      </label>
+      <input id="pdfInput" type="file" accept="application/pdf" style="display:none;" />
+      <div class="note-soft" style="margin-top:16px;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#858B85" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex:none; margin-top:1px;"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M6 6l2 2M16 16l2 2M18 6l-2 2M8 16l-2 2"></path></svg>
+        <div>A IA lê o laudo e preenche peso, altura, % de gordura, massa magra e taxa metabólica. Você confere tudo no próximo passo.</div>
+      </div>
+      <div id="pdfMsg" class="msg"></div>
+    </div>
+
+    <!-- Passo 2: dados -->
+    <div id="step2" class="hidden">
+      <div class="form-grid">
+        <label class="col-span"><span class="flabel">Nome</span>
+          <input id="nome" class="field" type="text" placeholder="Seu nome" /></label>
+        <label><span class="flabel">Sexo</span>
+          <select id="sexo" class="field"><option value="">—</option><option value="masculino">Masculino</option><option value="feminino">Feminino</option></select></label>
+        <label><span class="flabel">Idade</span>
+          <input id="idade" class="field num" type="number" placeholder="34" /></label>
+        <label><span class="flabel">Altura</span>
+          <div class="field-unit"><input id="altura_cm" class="field num" type="number" placeholder="178" style="padding-right:48px;" /><span class="u">cm</span></div></label>
+        <label><span class="flabel">Peso</span>
+          <div class="field-unit"><input id="peso_kg" class="field num" type="number" step="0.1" placeholder="88,1" style="padding-right:48px;" /><span class="u">kg</span></div></label>
+        <label><span class="flabel">Gordura corporal</span>
+          <div class="field-unit"><input id="percentual_gordura" class="field num" type="number" step="0.1" placeholder="24,1" style="padding-right:48px;" /><span class="u">%</span></div></label>
+        <label><span class="flabel">Massa magra</span>
+          <div class="field-unit"><input id="massa_magra_kg" class="field num" type="number" step="0.1" placeholder="66,8" style="padding-right:48px;" /><span class="u">kg</span></div></label>
+        <label><span class="flabel">Taxa metabólica basal</span>
+          <div class="field-unit"><input id="taxa_metabolica_basal_kcal" class="field num" type="number" placeholder="1780" style="padding-right:56px;" /><span class="u">kcal</span></div></label>
+      </div>
+    </div>
+
+    <!-- Passo 3: objetivo e rotina -->
+    <div id="step3" class="hidden">
+      <div style="display:grid; gap:18px;">
+        <label><span class="flabel">Qual é o seu objetivo?</span>
+          <input id="objetivo" class="field" type="text" placeholder="Ex.: perder 8 kg mantendo massa muscular" /></label>
+        <div>
+          <span class="flabel">Prazo</span>
+          <div id="prazoWrap" style="display:flex; flex-wrap:wrap; gap:8px;">
+            <button type="button" class="chip-choice" data-prazo="mensal">Mensal</button>
+            <button type="button" class="chip-choice" data-prazo="trimestral">Trimestral</button>
+            <button type="button" class="chip-choice" data-prazo="anual">Anual</button>
+          </div>
+        </div>
+        <label><span class="flabel">Rotina de treino (com horários)</span>
+          <textarea id="rotina_treino" class="field" rows="3" placeholder="Ex.: musculação seg/qua/sex 19h; corrida ter/qui 7h"></textarea></label>
+        <label><span class="flabel">Rotina alimentar atual</span>
+          <textarea id="rotina_alimentar" class="field" rows="3" placeholder="Ex.: café 7h, almoço 12h30, lanche 16h, jantar 20h"></textarea></label>
+        <label><span class="flabel">Restrições e preferências (opcional)</span>
+          <textarea id="restricoes" class="field" rows="2" placeholder="Ex.: sem lactose, não como peixe, orçamento baixo"></textarea></label>
+      </div>
+      <div id="dietMsg" class="msg"></div>
+    </div>
+
+    <!-- Passo 4: telegram -->
+    <div id="step4" class="hidden">
+      <div style="display:grid;">
+        <div class="tg-step"><span class="n">1</span><div class="tx">No Telegram, abra o bot <a href="https://t.me/minhadietazbot" target="_blank"><b>@minhadietazbot</b></a> e toque em Iniciar.</div></div>
+        <div class="tg-step"><span class="n">2</span><div class="tx">Volte aqui e clique em Detectar meu Telegram.</div></div>
+        <div class="tg-step"><span class="n">3</span><div class="tx">Clique em Enviar teste para confirmar que chegou.</div></div>
+      </div>
+      <label style="display:block; margin-top:18px;"><span class="flabel">Meu chat ID do Telegram</span>
+        <input id="telegram_chat_id" class="field num" type="text" placeholder="123456789" /></label>
+      <div style="margin-top:12px; display:flex; flex-wrap:wrap; gap:8px;">
+        <button id="btnTgDetect" class="chip-choice" style="height:44px;">Detectar meu Telegram</button>
+        <button id="btnTgTest" class="chip-choice" style="height:44px;">Enviar teste</button>
+      </div>
+      <div class="note" style="margin-top:16px;">Opcional. Sem isso o plano funciona igual — você só não recebe o toque na hora da refeição.</div>
+      <div id="tgMsg" class="msg"></div>
+    </div>
+  </div>
+
+  <div class="wizard-nav">
+    <button id="btnPrev" class="btn-back">Voltar</button>
+    <button id="btnNext" class="btn-next">Continuar</button>
+  </div>
+</section>
+
+<!-- ===================== DIETA ===================== -->
+<section id="view-dieta" class="wrap-narrow hidden">
+  <div style="display:flex; align-items:center; gap:10px;" class="no-print">
+    <button id="btnBackDiet" class="btn btn-ghost" style="padding:0 13px 0 10px;">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:-2px; margin-right:4px;"><path d="M15 6l-6 6 6 6"></path></svg>
+      Voltar
+    </button>
+    <div style="flex:1;"></div>
+    <button id="btnExportPdf" class="btn btn-primary" style="height:40px;">⬇ Exportar PDF</button>
+  </div>
+  <div class="card" style="margin-top:12px;">
+    <div id="printArea"></div>
+  </div>
+</section>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+  import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+  import { firebaseConfig, API_BASE } from "/static/js/firebase-config.js";
+
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  const $ = (id) => document.getElementById(id);
+
+  const PROFILE_FIELDS = ["nome","sexo","idade","altura_cm","peso_kg",
+    "percentual_gordura","massa_magra_kg","taxa_metabolica_basal_kcal"];
+  const EXTRA_FIELDS = ["objetivo","rotina_treino","rotina_alimentar","restricoes","telegram_chat_id"];
+
+  let token = null, profile = {}, diets = [];
+  let step = 1, metric = "peso", selectedPrazo = "mensal";
+
+  onAuthStateChanged(auth, async (user) => {
+    if (!user) { window.location.href = "/"; return; }
+    $("userEmail").textContent = user.email;
+    $("userAvatar").textContent = (user.email || "?").slice(0, 2).toUpperCase();
+    token = await user.getIdToken();
+    await loadAll();
+    showView("home");
+  });
+
+  $("btnLogout").onclick = () => signOut(auth);
+
+  // ---------- API ----------
+  async function api(path, opts = {}) {
+    opts.headers = Object.assign({ "Authorization": "Bearer " + token }, opts.headers || {});
+    const r = await fetch(API_BASE + path, opts);
+    if (!r.ok) { const e = await r.json().catch(() => ({ error: r.statusText })); throw new Error(e.error || "Erro"); }
+    return r.json();
+  }
+  function setMsg(el, t, k) { el.className = "msg" + (k ? " " + k : ""); el.innerHTML = t; }
+  function loading(el, t) { setMsg(el, '<span class="loader"></span>' + t, ""); }
+  function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c])); }
+  function br(n) { return (n == null || n === "") ? "—" : String(n).replace(".", ","); }
+
+  async function loadAll() {
+    try { profile = await api("/api/profile"); } catch (e) { profile = {}; }
+    try { diets = await api("/api/diets"); } catch (e) { diets = []; }
+  }
+
+  // ---------- navegação ----------
+  function showView(name) {
+    ["home","form","dieta"].forEach((v) => $("view-" + v).classList.toggle("hidden", v !== name));
+    if (name === "home") renderHome();
+    window.scrollTo(0, 0);
+  }
+  $("btnNewDiet").onclick = () => startWizard();
+  $("btnBack").onclick = () => showView("home");
+  $("btnBackDiet").onclick = () => showView("home");
+
+  // ---------- datas / séries ----------
+  function fmtDate(iso) {
+    if (!iso) return "";
+    const d = new Date(iso);
+    return d.toLocaleDateString("pt-BR");
+  }
+  function greetingText() {
+    const h = new Date().getHours();
+    const nome = profile.nome || (auth.currentUser.email || "").split("@")[0];
+    const saud = h < 12 ? "Bom dia" : h < 18 ? "Boa tarde" : "Boa noite";
+    return saud + ", " + nome + ".";
+  }
+  // série cronológica (mais antiga -> mais nova) a partir das dietas salvas
+  function seriesFor(metricKey) {
+    const key = { peso: "peso_kg", gordura: "percentual_gordura", magra: "massa_magra_kg" }[metricKey];
+    const arr = diets.slice().reverse()
+      .map((d) => ({ v: (d.perfil || {})[key], iso: d.criado_em }))
+      .filter((p) => typeof p.v === "number");
+    return arr;
+  }
+  const MESES = ["jan","fev","mar","abr","mai","jun","jul","ago","set","out","nov","dez"];
+
+  // ---------- HOME ----------
+  function renderHome() {
+    $("greeting").textContent = greetingText();
+
+    const nDiets = diets.length;
+    $("subline").textContent = nDiets
+      ? "Resumo da sua evolução e do plano atual."
+      : "Vamos montar seu primeiro plano alimentar.";
+
+    renderMeta();
+    renderComp();
+    renderPlano();
+    renderChart();
+    renderUltima();
+    renderHistorico();
+  }
+
+  function parseGoalLoss(txt) {
+    if (!txt) return null;
+    const m = String(txt).match(/(\d+[.,]?\d*)\s*kg/i);
+    return m ? parseFloat(m[1].replace(",", ".")) : null;
+  }
+
+  function renderMeta() {
+    const peso = profile.peso_kg;
+    const serie = seriesFor("peso");
+    if (peso == null && !serie.length) {
+      $("metaBody").innerHTML = `<div style="margin-top:18px;" class="empty">Preencha seu peso ao criar o perfil para acompanhar aqui.</div>`;
+      return;
+    }
+    const atual = peso != null ? peso : serie[serie.length - 1].v;
+    const inicio = serie.length ? serie[0].v : atual;
+    const perdaAlvo = parseGoalLoss(profile.objetivo);
+    let html = `<div style="margin-top:18px; display:flex; align-items:baseline; gap:7px;">
+      <span class="kpi" style="font-size:42px;">${br(atual)}</span>
+      <span style="font-size:15px; color:var(--muted2);">kg</span>`;
+    const delta = inicio - atual;
+    if (Math.abs(delta) >= 0.1) {
+      const perdeu = delta > 0;
+      html += `<span class="pill-up" style="margin-left:auto; ${perdeu ? "" : "background:rgba(192,57,43,.09); color:var(--danger);"}">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="${perdeu ? "M4 8l7 7 3-3 6 6" : "M4 16l7-7 3 3 6-6"}"></path><path d="${perdeu ? "M20 18v-5h-5" : "M20 6v5h-5"}"></path></svg>
+        ${br(Math.abs(delta).toFixed(1))} kg</span>`;
+    }
+    html += `</div>`;
+
+    if (perdaAlvo && inicio) {
+      const meta = inicio - perdaAlvo;
+      const prog = Math.max(0, Math.min(100, ((inicio - atual) / (inicio - meta)) * 100));
+      html += `<div class="track" style="margin-top:20px;"><div class="fill" style="width:${prog.toFixed(0)}%;"></div></div>
+        <div style="margin-top:9px; display:flex; justify-content:space-between; font-size:12.5px; color:var(--muted2);">
+          <span>Início ${br(inicio)} kg</span><span style="color:#3C4340; font-weight:600;">Meta ${br(meta.toFixed(1))} kg</span></div>`;
+    }
+
+    let coach;
+    if (serie.length >= 2) {
+      const dd = (serie[0].v - serie[serie.length - 1].v).toFixed(1).replace(".", ",");
+      coach = delta > 0 ? `Você já eliminou ${dd} kg desde a primeira medição. Continue firme.`
+                        : "Acompanhe seu peso a cada nova dieta para ver a tendência.";
+    } else {
+      coach = "Gere novas dietas ao longo do tempo para acompanhar sua evolução aqui.";
+    }
+    html += `<div style="margin-top:20px; padding-top:17px; border-top:1px solid var(--line); font-size:13.5px; line-height:1.55; color:var(--muted);">${esc(coach)}</div>`;
+    $("metaBody").innerHTML = html;
+  }
+
+  function renderComp() {
+    const rows = [];
+    if (profile.percentual_gordura != null)
+      rows.push({ lab: "Gordura corporal", val: br(profile.percentual_gordura) + "%", w: Math.min(95, profile.percentual_gordura), color: "#C08A3E" });
+    if (profile.massa_magra_kg != null) {
+      const w = profile.peso_kg ? (profile.massa_magra_kg / profile.peso_kg) * 100 : 70;
+      rows.push({ lab: "Massa magra", val: br(profile.massa_magra_kg) + " kg", w: Math.min(95, w), color: "#14735A" });
+    }
+    if (profile.taxa_metabolica_basal_kcal != null)
+      rows.push({ lab: "Taxa metabólica", val: br(profile.taxa_metabolica_basal_kcal) + " kcal", w: Math.min(95, Math.max(20, (profile.taxa_metabolica_basal_kcal - 1000) / 15)), color: "#3E6B8C" });
+
+    if (!rows.length) { $("compBody").innerHTML = `<div class="empty">Sem dados de composição ainda.</div>`; return; }
+    $("compBody").innerHTML = rows.map((r) => `
+      <div class="comp-row">
+        <div class="comp-head"><span class="lab">${r.lab}</span><span class="val">${r.val}</span></div>
+        <div class="track thin" style="margin-top:8px;"><div class="fill" style="width:${r.w.toFixed(0)}%; background:${r.color};"></div></div>
+      </div>`).join("");
+  }
+
+  function renderPlano() {
+    if (!diets.length) {
+      $("planoBody").innerHTML = `<div style="margin-top:16px;" class="empty">Nenhuma dieta gerada. Toque em “Gerar nova dieta”.</div>`;
+      return;
+    }
+    const d = diets[0].dieta || {};
+    const m = d.macros_dia || {};
+    let html = `<div style="margin-top:16px; display:flex; align-items:baseline; gap:6px;">
+      <span class="kpi" style="font-size:30px;">${d.calorias_alvo_dia ?? "—"}</span>
+      <span style="font-size:13px; color:var(--muted2);">kcal/dia</span></div>
+      <div class="macro-grid" style="margin-top:16px;">
+        <div class="macro"><div class="v">${br(m.proteina_g)}g</div><div class="l">proteína</div></div>
+        <div class="macro"><div class="v">${br(m.carbo_g)}g</div><div class="l">carbo</div></div>
+        <div class="macro"><div class="v">${br(m.gordura_g)}g</div><div class="l">gordura</div></div>
+      </div>`;
+    const nm = nextMeal(d.refeicoes || []);
+    if (nm) {
+      html += `<div class="nextmeal">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#14735A" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"></circle><path d="M12 7.5V12l3 2"></path></svg>
+        <div style="min-width:0;"><div class="t1">${esc(nm.nome)} · ${esc(nm.horario)}</div>
+        <div class="t2">próxima refeição${nm.kcal_total ? " · " + nm.kcal_total + " kcal" : ""}</div></div></div>`;
+    }
+    $("planoBody").innerHTML = html;
+  }
+
+  function parseHora(txt) {
+    const m = String(txt || "").match(/(\d{1,2})\s*[:hH]\s*(\d{1,2})?/);
+    if (!m) return null;
+    return parseInt(m[1]) * 60 + (m[2] ? parseInt(m[2]) : 0);
+  }
+  function nextMeal(refs) {
+    const now = new Date().getHours() * 60 + new Date().getMinutes();
+    const withT = refs.map((r) => ({ r, t: parseHora(r.horario) })).filter((x) => x.t != null);
+    if (!withT.length) return refs[0] || null;
+    const upcoming = withT.filter((x) => x.t >= now).sort((a, b) => a.t - b.t);
+    return (upcoming[0] || withT.sort((a, b) => a.t - b.t)[0]).r;
+  }
+
+  // ---------- gráfico ----------
+  $("segWrap").querySelectorAll(".seg").forEach((b) => {
+    b.onclick = () => {
+      metric = b.getAttribute("data-metric");
+      $("segWrap").querySelectorAll(".seg").forEach((x) => x.classList.toggle("active", x === b));
+      renderChart();
+    };
+  });
+
+  function renderChart() {
+    const serie = seriesFor(metric);
+    $("evolSub").textContent = serie.length
+      ? `${serie.length} medição(ões) · das suas dietas`
+      : "sem dados suficientes ainda";
+    const suf = metric === "gordura" ? "%" : "";
+    if (serie.length < 2) {
+      $("evolChart").innerHTML = `<div class="empty" style="padding:30px 0; text-align:center;">Gere pelo menos duas dietas para ver a evolução de ${metric === "peso" ? "peso" : metric === "gordura" ? "gordura" : "massa magra"}.</div>`;
+      return;
+    }
+    const vals = serie.map((p) => p.v);
+    const min = Math.min(...vals), max = Math.max(...vals);
+    const pad = (max - min) * 0.4 || 1, lo = min - pad, hi = max + pad;
+    const n = vals.length;
+    const X = (i) => 24 + i * (572 / (n - 1));
+    const Y = (v) => 196 - ((v - lo) / (hi - lo)) * 166;
+    const pts = serie.map((p, i) => {
+      const dt = new Date(p.iso);
+      return { x: X(i).toFixed(1), y: Y(p.v).toFixed(1), label: MESES[dt.getMonth()], value: br(p.v) + suf };
     });
+    const line = pts.map((p, i) => (i ? "L" : "M") + p.x + " " + p.y).join(" ");
+    const area = line + " L" + X(n - 1).toFixed(1) + " 208 L24 208 Z";
+    const circles = pts.map((p) => `<circle cx="${p.x}" cy="${p.y}" r="3.6" fill="#fff" stroke="#14735A" stroke-width="2" vector-effect="non-scaling-stroke"></circle>`).join("");
+    const labels = pts.map((p) => `<div style="text-align:center; flex:1;"><div class="mono" style="font-size:12.5px; color:#3C4340;">${p.value}</div><div style="margin-top:3px; font-size:11px; color:var(--muted4);">${p.label}</div></div>`).join("");
+    $("evolChart").innerHTML = `
+      <svg viewBox="0 0 620 220" preserveAspectRatio="none" style="width:100%; height:200px;">
+        <defs><linearGradient id="v2Fill" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#14735A" stop-opacity="0.16"></stop>
+          <stop offset="100%" stop-color="#14735A" stop-opacity="0"></stop></linearGradient></defs>
+        <line x1="14" y1="34" x2="606" y2="34" stroke="rgba(25,28,26,.07)"></line>
+        <line x1="14" y1="90" x2="606" y2="90" stroke="rgba(25,28,26,.07)"></line>
+        <line x1="14" y1="146" x2="606" y2="146" stroke="rgba(25,28,26,.07)"></line>
+        <line x1="14" y1="202" x2="606" y2="202" stroke="rgba(25,28,26,.07)"></line>
+        <path d="${area}" fill="url(#v2Fill)"></path>
+        <path d="${line}" fill="none" stroke="#14735A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"></path>
+        ${circles}
+      </svg>
+      <div style="display:flex; justify-content:space-between; margin-top:10px;">${labels}</div>`;
+  }
 
-    $("btnLogout").onclick = () => signOut(auth);
-
-    // ---------- navegação ----------
-    function showView(name) {
-      ["home","criar","dieta"].forEach((v) =>
-        $("view-" + v).classList.toggle("hidden", v !== name));
-      if (name === "home") renderHome();
-      window.scrollTo(0, 0);
+  // ---------- última dieta + histórico ----------
+  function renderUltima() {
+    if (!diets.length) {
+      $("lastDietSub").textContent = "";
+      $("lastDietBody").innerHTML = `<div class="empty">Dieta não gerada.</div>`;
+      $("openLast").style.display = "none";
+      return;
     }
-    $("btnGoCriar").onclick = () => { fillForm(); showView("criar"); };
-    $("btnBackHome1").onclick = () => showView("home");
-    $("btnBackHome2").onclick = () => showView("home");
+    $("openLast").style.display = "flex";
+    const d = diets[0];
+    $("lastDietSub").textContent = `${fmtDate(d.criado_em)} · ${d.objetivo || ""}`;
+    const refs = (d.dieta || {}).refeicoes || [];
+    $("lastDietBody").innerHTML = refs.map((r) => `
+      <div class="meal-row"><span class="time">${esc(r.horario || "")}</span>
+      <span class="nm">${esc(r.nome || "")}</span>
+      <span class="kc">${r.kcal_total ? r.kcal_total + " kcal" : ""}</span></div>`).join("")
+      || `<div class="empty">Sem refeições.</div>`;
+    $("openLast").onclick = (e) => { e.preventDefault(); openDiet(d.id); };
+  }
 
-    // ---------- API ----------
-    async function api(path, opts = {}) {
-      opts.headers = Object.assign({ "Authorization": "Bearer " + token }, opts.headers || {});
-      const r = await fetch(API_BASE + path, opts);
-      if (!r.ok) {
-        const e = await r.json().catch(() => ({ error: r.statusText }));
-        throw new Error(e.error || "Erro na requisição");
-      }
-      return r.json();
-    }
-    function setMsg(el, text, kind) { el.className = "msg" + (kind ? " " + kind : ""); el.innerHTML = text; }
-    function loading(el, text) { setMsg(el, '<span class="loader"></span>' + text, ""); }
+  function renderHistorico() {
+    if (!diets.length) { $("historyBody").innerHTML = `<div class="empty">Nenhuma dieta no histórico ainda.</div>`; return; }
+    const nome = profile.nome || (auth.currentUser.email || "").split("@")[0];
+    $("historyBody").innerHTML = diets.map((d) => {
+      const kcal = (d.dieta || {}).calorias_alvo_dia;
+      return `<div class="hist-card" data-id="${d.id}">
+        <div style="min-width:0; flex:1;">
+          <div class="t">perfil-${esc(d.nome || nome)}-${fmtDate(d.criado_em)}</div>
+          <div class="d">${fmtDate(d.criado_em)} · ${esc(d.objetivo || "")}</div>
+        </div>
+        <span class="kc">${kcal ? kcal + " kcal" : ""}</span>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#B4B9B3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"></path></svg>
+      </div>`;
+    }).join("");
+    $("historyBody").querySelectorAll(".hist-card").forEach((el) =>
+      el.onclick = () => openDiet(el.getAttribute("data-id")));
+  }
 
-    async function loadProfile() {
-      try { profile = await api("/api/profile"); } catch (e) { profile = {}; }
-    }
-    async function loadDiets() {
-      try { diets = await api("/api/diets"); } catch (e) { diets = []; }
-    }
+  // ---------- WIZARD ----------
+  const STEPS = [
+    { title: "Importar bioimpedância", sub: "Tem o PDF do exame? A IA preenche seus dados em segundos. Se não tiver, é só pular." },
+    { title: "Seus dados", sub: "Confira o que veio do exame e ajuste o que precisar." },
+    { title: "Objetivo e rotina", sub: "Quanto mais preciso você for sobre treinos e horários, melhor o plano encaixa no seu dia." },
+    { title: "Lembretes no Telegram", sub: "Receba cada refeição no horário certo. Configura uma vez, funciona sempre." },
+  ];
 
-    // ---------- INÍCIO / perfil ----------
-    function fmtDate(iso) {
-      if (!iso) return "";
-      const d = new Date(iso);
-      return d.toLocaleDateString("pt-BR") + " " + d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
-    }
-    function renderHome() {
-      const nome = profile.nome || (auth.currentUser.email || "").split("@")[0];
-      $("hello").textContent = "Olá, " + nome;
+  function startWizard() {
+    step = 1;
+    fillForm();
+    selectedPrazo = profile.prazo || "mensal";
+    updatePrazoChips();
+    renderStep();
+    showView("form");
+  }
+  function fillForm() {
+    PROFILE_FIELDS.forEach((f) => { $(f).value = profile[f] != null ? profile[f] : ""; });
+    EXTRA_FIELDS.forEach((f) => { $(f).value = profile[f] != null ? profile[f] : ""; });
+  }
+  function collectProfile() {
+    const p = {};
+    PROFILE_FIELDS.forEach((f) => {
+      const v = $(f).value.trim();
+      if (v !== "") p[f] = (f === "nome" || f === "sexo" || isNaN(v)) ? v : Number(v);
+    });
+    EXTRA_FIELDS.forEach((f) => { p[f] = $(f).value.trim(); });
+    p.prazo = selectedPrazo;
+    return p;
+  }
 
-      const linha = (rot, val) => `<div class="profile-line"><span>${rot}</span><b>${val || "—"}</b></div>`;
-      $("profileSummary").innerHTML =
-        linha("Nome", profile.nome) +
-        linha("Idade", profile.idade ? profile.idade + " anos" : "") +
-        linha("Objetivo", profile.objetivo);
+  function renderStep() {
+    $("stepCounter").textContent = "Passo " + step + " de 4";
+    $("stepTitle").textContent = STEPS[step - 1].title;
+    $("stepSub").textContent = STEPS[step - 1].sub;
+    Array.from($("stepsBar").children).forEach((d, i) => d.classList.toggle("on", i < step));
+    [1,2,3,4].forEach((n) => $("step" + n).classList.toggle("hidden", n !== step));
+    $("btnPrev").textContent = step === 1 ? "Voltar" : "Voltar";
+    $("btnNext").textContent = step === 1 ? "Analisar PDF e continuar"
+      : step === 2 ? "Continuar" : step === 3 ? "Gerar minha dieta" : "Concluir";
+    $("btnNext").disabled = false;
+  }
+  $("btnPrev").onclick = () => { if (step === 1) showView("home"); else { step--; renderStep(); } };
+  $("btnNext").onclick = () => onNext();
 
-      if (diets.length) {
-        const d = diets[0];
-        $("lastDiet").innerHTML =
-          `<div class="hist-item" data-id="${d.id}">
-             <div><div class="name">Dieta de ${escapeHtml(d.nome || nome)}</div>
-             <div class="date">${fmtDate(d.criado_em)} · ${escapeHtml(d.objetivo || "")}</div></div>
-             <span class="badge">abrir →</span></div>`;
-      } else {
-        $("lastDiet").innerHTML = `<p class="empty">Dieta não gerada.</p>`;
-      }
-
-      if (diets.length) {
-        $("history").innerHTML = diets.map((d) =>
-          `<div class="hist-item" data-id="${d.id}">
-             <div><div class="name">perfil-${escapeHtml(d.nome || nome)}-${fmtDate(d.criado_em).split(" ")[0]}</div>
-             <div class="date">${fmtDate(d.criado_em)} · ${escapeHtml(d.objetivo || "")}</div></div>
-             <span class="badge">abrir →</span></div>`).join("");
-      } else {
-        $("history").innerHTML = `<p class="empty">Nenhuma dieta no histórico ainda.</p>`;
-      }
-
-      document.querySelectorAll(".hist-item").forEach((el) => {
-        el.onclick = () => openDiet(el.getAttribute("data-id"));
-      });
-    }
-
-    // ---------- CRIAR perfil (form) ----------
-    function fillForm() {
-      PROFILE_FIELDS.forEach((f) => { $(f).value = profile[f] != null ? profile[f] : ""; });
-      EXTRA_FIELDS.forEach((f) => { $(f).value = profile[f] != null ? profile[f] : ""; });
-    }
-    function collectProfile() {
-      const p = {};
-      PROFILE_FIELDS.forEach((f) => {
-        const v = $(f).value.trim();
-        if (v !== "") p[f] = (f === "nome" || f === "sexo" || isNaN(v)) ? v : Number(v);
-      });
-      EXTRA_FIELDS.forEach((f) => { p[f] = $(f).value.trim(); });
-      return p;
-    }
-
-    $("btnSaveProfile").onclick = async () => {
-      loading($("profileMsg"), "Salvando...");
-      try {
-        profile = Object.assign(profile, collectProfile());
-        await api("/api/profile", { method: "POST",
-          headers: { "Content-Type": "application/json" }, body: JSON.stringify(collectProfile()) });
-        setMsg($("profileMsg"), "Dados salvos.", "ok");
-      } catch (e) { setMsg($("profileMsg"), e.message, "err"); }
-    };
-
-    $("btnAnalyze").onclick = async () => {
+  async function onNext() {
+    if (step === 1) {
       const file = $("pdfInput").files[0];
-      if (!file) { setMsg($("pdfMsg"), "Selecione um PDF.", "err"); return; }
-      loading($("pdfMsg"), "Lendo o PDF com IA...");
-      $("btnAnalyze").disabled = true;
-      try {
-        const fd = new FormData();
-        fd.append("file", file);
-        const res = await api("/api/analyze-pdf", { method: "POST", body: fd });
-        const d = res.data || {};
-        PROFILE_FIELDS.forEach((f) => { if (d[f] != null) $(f).value = d[f]; });
-        setMsg($("pdfMsg"), "Dados extraídos e preenchidos. Confira acima.", "ok");
-      } catch (e) { setMsg($("pdfMsg"), e.message, "err"); }
-      finally { $("btnAnalyze").disabled = false; }
-    };
-
-    $("btnGenerate").onclick = async () => {
-      if (!$("objetivo").value.trim()) { setMsg($("dietMsg"), "Informe seu objetivo.", "err"); return; }
-      loading($("dietMsg"), "Montando sua dieta... (pode levar alguns segundos)");
-      $("btnGenerate").disabled = true;
-      try {
-        const perfil = collectProfile();
-        await api("/api/profile", { method: "POST",
-          headers: { "Content-Type": "application/json" }, body: JSON.stringify(perfil) });
-        const res = await api("/api/generate-diet", { method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            perfil, objetivo: $("objetivo").value.trim(), prazo: $("prazo").value,
-            rotina_treino: $("rotina_treino").value.trim(),
-            rotina_alimentar: $("rotina_alimentar").value.trim(),
-            restricoes: $("restricoes").value.trim(),
-          }) });
-        profile = Object.assign(profile, perfil);
-        await loadDiets();
-        setMsg($("dietMsg"), "Dieta gerada e salva.", "ok");
-        renderDiet(res.dieta, res);
-        showView("dieta");
-      } catch (e) { setMsg($("dietMsg"), e.message, "err"); }
-      finally { $("btnGenerate").disabled = false; }
-    };
-
-    // ---------- Telegram ----------
-    $("btnTgDetect").onclick = async () => {
-      loading($("tgMsg"), "Procurando sua conversa com o bot...");
-      try {
-        const res = await api("/api/telegram/detect");
-        const chats = res.chats || [];
-        if (!chats.length) {
-          setMsg($("tgMsg"), "Nenhuma conversa encontrada. Abra o bot no Telegram, toque em Iniciar e tente de novo.", "err");
-          return;
-        }
-        $("telegram_chat_id").value = chats[0].chat_id;
-        const nomes = chats.map((c) => `${c.nome} (${c.chat_id})`).join(", ");
-        setMsg($("tgMsg"), "Detectado: " + nomes + ". Clique em Enviar teste.", "ok");
-      } catch (e) { setMsg($("tgMsg"), e.message, "err"); }
-    };
-
-    $("btnTgSave").onclick = async () => {
-      loading($("tgMsg"), "Salvando...");
-      try {
-        profile.telegram_chat_id = $("telegram_chat_id").value.trim();
-        await api("/api/profile", { method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ telegram_chat_id: profile.telegram_chat_id }) });
-        setMsg($("tgMsg"), "Telegram salvo.", "ok");
-      } catch (e) { setMsg($("tgMsg"), e.message, "err"); }
-    };
-
-    $("btnTgTest").onclick = async () => {
-      const chat_id = $("telegram_chat_id").value.trim();
-      if (!chat_id) { setMsg($("tgMsg"), "Detecte ou informe o chat ID primeiro.", "err"); return; }
-      loading($("tgMsg"), "Enviando teste...");
-      try {
-        // garante que está salvo antes de testar
-        await api("/api/profile", { method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ telegram_chat_id: chat_id }) });
-        profile.telegram_chat_id = chat_id;
-        await api("/api/telegram/test", { method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ chat_id }) });
-        setMsg($("tgMsg"), "Teste enviado! Confira seu Telegram.", "ok");
-      } catch (e) { setMsg($("tgMsg"), e.message, "err"); }
-    };
-
-    // ---------- DIETA ----------
-    function openDiet(id) {
-      const d = diets.find((x) => x.id === id);
-      if (!d) return;
-      renderDiet(d.dieta, d);
-      showView("dieta");
+      if (file) { await analyzePdf(file); }
+      step = 2; renderStep(); return;
     }
+    if (step === 2) { step = 3; renderStep(); return; }
+    if (step === 3) { await generateDiet(); return; }
+    if (step === 4) { await loadAll(); showView("home"); return; }
+  }
 
-    $("btnExportPdf").onclick = () => window.print();
+  // passo 1 — arquivo
+  $("pdfInput").onchange = () => {
+    const f = $("pdfInput").files[0];
+    if (f) $("dropTitle").textContent = f.name;
+  };
+  async function analyzePdf(file) {
+    loading($("pdfMsg"), "Lendo o PDF com IA...");
+    $("btnNext").disabled = true;
+    try {
+      const fd = new FormData(); fd.append("file", file);
+      const res = await api("/api/analyze-pdf", { method: "POST", body: fd });
+      const d = res.data || {};
+      PROFILE_FIELDS.forEach((f) => { if (d[f] != null) $(f).value = d[f]; });
+      setMsg($("pdfMsg"), "Dados extraídos. Confira no próximo passo.", "ok");
+    } catch (e) { setMsg($("pdfMsg"), e.message, "err"); }
+    finally { $("btnNext").disabled = false; }
+  }
 
-    function renderDiet(d, meta) {
-      const area = $("printArea");
-      const nome = (meta && meta.nome) || profile.nome || "";
-      const data = fmtDate(meta && meta.criado_em) || new Date().toLocaleDateString("pt-BR");
-      if (!d || d._parse_error) {
-        area.innerHTML = "<h2>Dieta</h2><p>Não consegui estruturar a resposta.</p><pre>" +
-          (d && d.conteudo ? escapeHtml(d.conteudo) : "") + "</pre>";
-        return;
-      }
-      const m = d.macros_dia || {};
-      let html = `<h2 style="margin-bottom:2px">Dieta${nome ? " — " + escapeHtml(nome) : ""}</h2>
-        <p class="hint">${data}${meta && meta.objetivo ? " · " + escapeHtml(meta.objetivo) : ""}</p>`;
-      if (d.resumo) html += `<p>${escapeHtml(d.resumo)}</p>`;
-      html += `<div class="totals">
-        <div class="box"><b>${d.calorias_alvo_dia ?? "—"}</b><small>kcal/dia</small></div>
-        <div class="box"><b>${m.proteina_g ?? "—"}g</b><small>proteína</small></div>
-        <div class="box"><b>${m.carbo_g ?? "—"}g</b><small>carbo</small></div>
-        <div class="box"><b>${m.gordura_g ?? "—"}g</b><small>gordura</small></div></div>`;
-      (d.refeicoes || []).forEach((r) => {
-        html += `<div class="meal"><div class="meal-head">
-          <span class="h">${escapeHtml(r.nome || "")}</span>
-          <span class="t">${escapeHtml(r.horario || "")} · ${r.kcal_total ?? "?"} kcal</span></div><ul>`;
-        (r.itens || []).forEach((it) => {
-          html += `<li>${escapeHtml(it.alimento || "")} <span>— ${escapeHtml(it.porcao || "")}${it.kcal ? " · " + it.kcal + " kcal" : ""}</span></li>`;
-        });
-        html += `</ul></div>`;
+  // passo 3 — prazo + gerar
+  function updatePrazoChips() {
+    $("prazoWrap").querySelectorAll(".chip-choice").forEach((c) =>
+      c.classList.toggle("active", c.getAttribute("data-prazo") === selectedPrazo));
+  }
+  $("prazoWrap").querySelectorAll(".chip-choice").forEach((c) =>
+    c.onclick = () => { selectedPrazo = c.getAttribute("data-prazo"); updatePrazoChips(); });
+
+  async function generateDiet() {
+    if (!$("objetivo").value.trim()) { setMsg($("dietMsg"), "Informe seu objetivo.", "err"); return; }
+    loading($("dietMsg"), "Montando sua dieta... (alguns segundos)");
+    $("btnNext").disabled = true;
+    try {
+      const perfil = collectProfile();
+      await api("/api/profile", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(perfil) });
+      await api("/api/generate-diet", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ perfil, objetivo: $("objetivo").value.trim(), prazo: selectedPrazo,
+          rotina_treino: $("rotina_treino").value.trim(), rotina_alimentar: $("rotina_alimentar").value.trim(),
+          restricoes: $("restricoes").value.trim() }) });
+      profile = Object.assign(profile, perfil);
+      await loadAll();
+      setMsg($("dietMsg"), "Dieta gerada e salva!", "ok");
+      step = 4; renderStep();
+    } catch (e) { setMsg($("dietMsg"), e.message, "err"); }
+    finally { $("btnNext").disabled = false; }
+  }
+
+  // passo 4 — telegram
+  $("btnTgDetect").onclick = async () => {
+    loading($("tgMsg"), "Procurando sua conversa com o bot...");
+    try {
+      const res = await api("/api/telegram/detect");
+      const chats = res.chats || [];
+      if (!chats.length) { setMsg($("tgMsg"), "Nenhuma conversa. Abra o bot, toque em Iniciar e tente de novo.", "err"); return; }
+      $("telegram_chat_id").value = chats[0].chat_id;
+      setMsg($("tgMsg"), "Detectado: " + chats.map((c) => c.nome).join(", ") + ". Clique em Enviar teste.", "ok");
+    } catch (e) { setMsg($("tgMsg"), e.message, "err"); }
+  };
+  $("btnTgTest").onclick = async () => {
+    const chat_id = $("telegram_chat_id").value.trim();
+    if (!chat_id) { setMsg($("tgMsg"), "Detecte ou informe o chat ID primeiro.", "err"); return; }
+    loading($("tgMsg"), "Enviando teste...");
+    try {
+      await api("/api/profile", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ telegram_chat_id: chat_id }) });
+      profile.telegram_chat_id = chat_id;
+      await api("/api/telegram/test", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ chat_id }) });
+      setMsg($("tgMsg"), "Teste enviado! Confira seu Telegram.", "ok");
+    } catch (e) { setMsg($("tgMsg"), e.message, "err"); }
+  };
+
+  // ---------- DIETA ----------
+  function openDiet(id) {
+    const d = diets.find((x) => x.id === id);
+    if (!d) return;
+    renderDiet(d.dieta, d);
+    showView("dieta");
+  }
+  $("btnExportPdf").onclick = () => window.print();
+
+  function renderDiet(d, meta) {
+    const area = $("printArea");
+    const nome = (meta && meta.nome) || profile.nome || "";
+    const data = fmtDate(meta && meta.criado_em) || new Date().toLocaleDateString("pt-BR");
+    if (!d || d._parse_error) {
+      area.innerHTML = `<div class="card-title">Dieta</div><p>Não consegui estruturar a resposta.</p><pre>${esc(d && d.conteudo ? d.conteudo : "")}</pre>`;
+      return;
+    }
+    const m = d.macros_dia || {};
+    let html = `<div class="serif" style="font-size:28px;">Dieta${nome ? " — " + esc(nome) : ""}</div>
+      <div style="font-size:12.5px; color:var(--muted3); font-family:'JetBrains Mono',monospace; margin:2px 0 14px;">${data}${meta && meta.objetivo ? " · " + esc(meta.objetivo) : ""}</div>`;
+    if (d.resumo) html += `<p style="color:var(--muted); line-height:1.6;">${esc(d.resumo)}</p>`;
+    html += `<div class="totals">
+      <div class="box"><b>${d.calorias_alvo_dia ?? "—"}</b><small>kcal/dia</small></div>
+      <div class="box"><b>${br(m.proteina_g)}g</b><small>proteína</small></div>
+      <div class="box"><b>${br(m.carbo_g)}g</b><small>carbo</small></div>
+      <div class="box"><b>${br(m.gordura_g)}g</b><small>gordura</small></div></div>`;
+    (d.refeicoes || []).forEach((r) => {
+      html += `<div class="diet-meal"><div class="mh"><span class="h">${esc(r.nome || "")}</span>
+        <span class="t">${esc(r.horario || "")} · ${r.kcal_total ?? "?"} kcal</span></div><ul>`;
+      (r.itens || []).forEach((it) => {
+        html += `<li>${esc(it.alimento || "")} <span>— ${esc(it.porcao || "")}${it.kcal ? " · " + it.kcal + " kcal" : ""}</span></li>`;
       });
-      if (d.observacoes) html += `<p class="hint">${escapeHtml(d.observacoes)}</p>`;
-      html += `<div class="disclaimer">${escapeHtml(d.aviso || "Sugestão gerada por IA — não substitui um nutricionista.")}</div>`;
-      area.innerHTML = html;
-    }
-
-    function escapeHtml(s) {
-      return String(s == null ? "" : s).replace(/[&<>"']/g, (c) =>
-        ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-    }
-  </script>
+      html += `</ul></div>`;
+    });
+    if (d.observacoes) html += `<p style="font-size:13px; color:var(--muted);">${esc(d.observacoes)}</p>`;
+    html += `<div class="disclaimer">${esc(d.aviso || "Sugestão gerada por IA — não substitui um nutricionista.")}</div>`;
+    area.innerHTML = html;
+  }
+</script>
 </body>
 </html>
