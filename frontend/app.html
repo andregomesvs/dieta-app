@@ -401,6 +401,10 @@
 
   // ---------- API ----------
   async function api(path, opts = {}) {
+    // pega um token sempre válido (o Firebase renova automaticamente se expirou)
+    if (auth.currentUser) {
+      try { token = await auth.currentUser.getIdToken(); } catch (_) {}
+    }
     opts.headers = Object.assign({ "Authorization": "Bearer " + token }, opts.headers || {});
     const r = await fetch(API_BASE + path, opts);
     if (!r.ok) {
