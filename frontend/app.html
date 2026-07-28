@@ -76,6 +76,18 @@
     </div>
   </div>
 
+  <!-- Hoje: consumo x alvo -->
+  <div class="card" id="hojeCard" style="margin-top:14px;">
+    <div style="display:flex; align-items:center; justify-content:space-between; gap:10px;">
+      <div class="card-label green">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg>
+        <span>Hoje</span>
+      </div>
+      <span id="hojeAderencia" class="badge"></span>
+    </div>
+    <div id="hojeBody" style="margin-top:14px;"></div>
+  </div>
+
   <!-- Análise dos exames -->
   <div class="card" style="margin-top:14px; display:flex; flex-wrap:wrap; align-items:center; gap:16px; justify-content:space-between;">
     <div style="display:flex; align-items:flex-start; gap:13px; min-width:0;">
@@ -225,17 +237,15 @@
     <!-- Passo 4: telegram -->
     <div id="step4" class="hidden">
       <div style="display:grid;">
-        <div class="tg-step"><span class="n">1</span><div class="tx">No Telegram, abra o bot <a href="https://t.me/minhadietazbot" target="_blank"><b>@minhadietazbot</b></a> e toque em Iniciar.</div></div>
-        <div class="tg-step"><span class="n">2</span><div class="tx">Volte aqui e clique em Detectar meu Telegram.</div></div>
-        <div class="tg-step"><span class="n">3</span><div class="tx">Clique em Enviar teste para confirmar que chegou.</div></div>
+        <div class="tg-step"><span class="n">1</span><div class="tx">Toque em <b>Conectar meu Telegram</b> — abre o bot no app do Telegram.</div></div>
+        <div class="tg-step"><span class="n">2</span><div class="tx">No Telegram, toque em <b>Iniciar</b> (ou Começar).</div></div>
+        <div class="tg-step"><span class="n">3</span><div class="tx">Volte aqui e toque em <b>Enviar teste</b> para confirmar.</div></div>
       </div>
-      <label style="display:block; margin-top:18px;"><span class="flabel">Meu chat ID do Telegram</span>
-        <input id="telegram_chat_id" class="field num" type="text" placeholder="123456789" /></label>
-      <div style="margin-top:12px; display:flex; flex-wrap:wrap; gap:8px;">
-        <button id="btnTgDetect" class="chip-choice" style="height:44px;">Detectar meu Telegram</button>
+      <div style="margin-top:16px; display:flex; flex-wrap:wrap; gap:8px;">
+        <button id="btnTgConnect" class="btn btn-primary" style="height:44px;">Conectar meu Telegram</button>
         <button id="btnTgTest" class="chip-choice" style="height:44px;">Enviar teste</button>
       </div>
-      <div class="note" style="margin-top:16px;">Opcional. Sem isso o plano funciona igual — você só não recebe o toque na hora da refeição.</div>
+      <div class="note" style="margin-top:16px;">Depois de conectar, você recebe cada refeição no horário e responde no chat — <b>Cumpri</b>, <b>Comi outra coisa</b> ou <b>Pulei</b> — alimentando seu resumo do dia. Opcional.</div>
       <div id="tgMsg" class="msg"></div>
     </div>
   </div>
@@ -383,9 +393,9 @@
 
   const PROFILE_FIELDS = ["nome","sexo","idade","altura_cm","peso_kg",
     "percentual_gordura","massa_magra_kg","gordura_visceral","taxa_metabolica_basal_kcal","cintura_cm"];
-  const EXTRA_FIELDS = ["objetivo","rotina_treino","rotina_alimentar","restricoes","telegram_chat_id"];
+  const EXTRA_FIELDS = ["objetivo","rotina_treino","rotina_alimentar","restricoes"];
 
-  let token = null, profile = {}, diets = [], medicoes = [];
+  let token = null, profile = {}, diets = [], medicoes = [], consumoHoje = {};
   let step = 1, metric = "peso", selectedPrazo = "mensal", bloodData = null;
 
   onAuthStateChanged(auth, async (user) => {
@@ -425,6 +435,7 @@
     try { profile = await api("/api/profile"); } catch (e) { profile = {}; }
     try { diets = await api("/api/diets"); } catch (e) { diets = []; }
     try { medicoes = await api("/api/measurements"); } catch (e) { medicoes = []; }
+    try { consumoHoje = await api("/api/consumo/today"); } catch (e) { consumoHoje = {}; }
   }
 
   // ---------- navegação ----------
@@ -494,10 +505,46 @@
     renderMeta();
     renderComp();
     renderPlano();
+    renderHoje();
     renderChart();
     renderUltima();
     renderHistorico();
     renderAnaliseTeaser();
+  }
+
+  function renderHoje() {
+    const refs = consumoHoje.refeicoes || {};
+    const entradas = Object.values(refs);
+    const alvo = consumoHoje.alvo_kcal || (diets[0] && (diets[0].dieta || {}).calorias_alvo_dia) || null;
+    const total = consumoHoje.total_kcal || 0;
+
+    if (!entradas.length) {
+      $("hojeAderencia").textContent = "";
+      $("hojeBody").innerHTML = `<div class="empty">Nada registrado hoje ainda. Responda os lembretes no Telegram (Cumpri / Outra coisa / Pulei) que aparece aqui.</div>`;
+      return;
+    }
+    const cumpridas = entradas.filter((e) => e.status === "cumpriu").length;
+    $("hojeAderencia").textContent = `${cumpridas}/${entradas.length} cumpridas`;
+
+    const pct = alvo ? Math.min(100, (total / alvo) * 100) : 0;
+    const acima = alvo && total > alvo;
+    let html = `<div style="display:flex; align-items:baseline; gap:7px;">
+      <span class="kpi" style="font-size:34px;">${total}</span>
+      <span style="font-size:14px; color:var(--muted2);">kcal consumidas${alvo ? " · alvo " + alvo : ""}</span></div>`;
+    if (alvo) {
+      html += `<div class="track" style="margin-top:14px;"><div class="fill" style="width:${pct.toFixed(0)}%; ${acima ? "background:var(--danger);" : ""}"></div></div>
+        <div style="margin-top:8px; font-size:12.5px; color:${acima ? "var(--danger)" : "var(--muted2)"};">${acima ? "Acima do alvo em " + (total - alvo) + " kcal" : "Faltam " + Math.max(0, alvo - total) + " kcal para o alvo"}</div>`;
+    }
+    const icon = { cumpriu: "✅", substituiu: "🔄", pulou: "⏭️" };
+    html += `<div style="margin-top:14px; display:grid; gap:4px;">`;
+    entradas.forEach((e) => {
+      html += `<div class="meal-row" style="padding:8px 4px;">
+        <span style="width:24px;">${icon[e.status] || "•"}</span>
+        <span class="nm">${esc(e.nome || "")}${e.status === "substituiu" && e.itens ? ` <span class="it-sub" style="font-weight:400;">(${esc(e.itens)})</span>` : ""}</span>
+        <span class="kc">${e.kcal ? e.kcal + " kcal" : "—"}</span></div>`;
+    });
+    html += `</div>`;
+    $("hojeBody").innerHTML = html;
   }
 
   function renderAnaliseTeaser() {
@@ -875,27 +922,21 @@
     finally { $("btnNext").disabled = false; }
   }
 
-  // passo 4 — telegram
-  $("btnTgDetect").onclick = async () => {
-    loading($("tgMsg"), "Procurando sua conversa com o bot...");
+  // passo 4 — telegram (conectar via deep-link + testar)
+  $("btnTgConnect").onclick = async () => {
+    loading($("tgMsg"), "Gerando link de conexão...");
     try {
-      const res = await api("/api/telegram/detect");
-      const chats = res.chats || [];
-      if (!chats.length) { setMsg($("tgMsg"), "Nenhuma conversa. Abra o bot, toque em Iniciar e tente de novo.", "err"); return; }
-      $("telegram_chat_id").value = chats[0].chat_id;
-      setMsg($("tgMsg"), "Detectado: " + chats.map((c) => c.nome).join(", ") + ". Clique em Enviar teste.", "ok");
+      const res = await api("/api/telegram/link-code", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+      setMsg($("tgMsg"), "Abrindo o Telegram... toque em <b>Iniciar</b> lá e volte para enviar o teste.", "ok");
+      window.open(res.link, "_blank");
     } catch (e) { setMsg($("tgMsg"), e.message, "err"); }
   };
   $("btnTgTest").onclick = async () => {
-    const chat_id = $("telegram_chat_id").value.trim();
-    if (!chat_id) { setMsg($("tgMsg"), "Detecte ou informe o chat ID primeiro.", "err"); return; }
     loading($("tgMsg"), "Enviando teste...");
     try {
-      await api("/api/profile", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ telegram_chat_id: chat_id }) });
-      profile.telegram_chat_id = chat_id;
-      await api("/api/telegram/test", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ chat_id }) });
+      await api("/api/telegram/test", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
       setMsg($("tgMsg"), "Teste enviado! Confira seu Telegram.", "ok");
-    } catch (e) { setMsg($("tgMsg"), e.message, "err"); }
+    } catch (e) { setMsg($("tgMsg"), e.message + " — você conectou o Telegram no passo anterior?", "err"); }
   };
 
   // ---------- ANÁLISE ----------

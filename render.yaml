@@ -19,6 +19,8 @@ services:
         value: calendar-190c7
       - key: TELEGRAM_BOT_TOKEN
         sync: false            # token do @BotFather (defina no painel)
+      - key: TELEGRAM_BOT_USERNAME
+        value: minhadietazbot  # sem o @, usado no link de conexão
       - key: CRON_SECRET
         generateValue: true    # segredo que protege /cron/send-reminders
       - key: TIMEZONE

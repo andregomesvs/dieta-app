@@ -96,24 +96,40 @@ O app envia cada refeição no horário certo via bot do Telegram.
 3. No Render → serviço `minha-dieta` → **Environment** → variável
    `TELEGRAM_BOT_TOKEN` = o token do bot. Salve.
 
-### 2. Conectar seu Telegram no app
+Defina também `TELEGRAM_BOT_USERNAME` (sem @, ex.: `minhadietazbot`).
 
-1. No app, tela **Criar / atualizar perfil** → seção **Lembretes no Telegram**.
-2. Abra o seu bot no Telegram e toque em **Iniciar** (ou mande "oi").
-3. Clique em **Detectar meu Telegram** (preenche seu chat ID) → **Enviar teste**.
-4. Recebeu a mensagem de teste? Está conectado.
+### 2. Registrar o webhook (uma vez)
 
-### 3. Agendar o cron (gratuito)
+Para o bot **receber** suas respostas (Cumpri / Comi outra coisa / Pulei),
+registre o webhook uma vez, abrindo no navegador:
 
-O Render free "dorme"; por isso um cron externo chama o app periodicamente.
+```
+https://SEU-APP.onrender.com/telegram/setup?secret=SEU_CRON_SECRET
+```
+
+Deve responder com `"ok": true`. Isso aponta o Telegram para
+`/telegram/webhook` (protegido por segredo). Refaça se trocar de domínio.
+
+> Observação: com webhook ativo, o antigo "Detectar" (getUpdates) não funciona —
+> a conexão passa a ser pelo link `/start`, abaixo.
+
+### 3. Conectar seu Telegram no app
+
+1. No app, **Criar / atualizar perfil** → passo **Lembretes no Telegram**.
+2. Toque em **Conectar meu Telegram** (abre o bot) → **Iniciar** no Telegram.
+3. Volte e toque em **Enviar teste**. Recebeu? Conectado.
+
+### 4. Agendar o cron (gratuito)
+
+O Render free "dorme"; um cron externo chama o app periodicamente.
 
 1. Em [cron-job.org](https://cron-job.org/) (grátis), crie um cron job.
 2. **URL:** `https://SEU-APP.onrender.com/cron/send-reminders?secret=SEU_CRON_SECRET`
-   - O valor de `CRON_SECRET` está no Render → Environment (gerado automaticamente).
-3. **Frequência:** a cada 10 minutos (ou 5). A janela padrão é 15 min, então
-   nenhuma refeição é perdida e nada é enviado duplicado no mesmo dia.
+3. **Frequência:** a cada 10 minutos. Janela padrão de 15 min evita perdas e duplicações.
 
-Pronto: nas horas das refeições da sua dieta, a mensagem chega no Telegram.
+Nas horas das refeições, a mensagem chega com botões. Ao responder, o app
+registra o consumo do dia (card **Hoje** no dashboard). Em "Comi outra coisa",
+a IA estima as calorias do que você escreveu e soma no total.
 
 ## Aviso
 

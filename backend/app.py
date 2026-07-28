@@ -21,6 +21,7 @@ import os
 import re
 import json
 import base64
+import secrets
 import datetime
 import urllib.parse
 import urllib.request
@@ -52,10 +53,15 @@ FIREBASE_PROJECT_ID = os.environ.get("FIREBASE_PROJECT_ID", "")
 
 # Telegram + agendamento de lembretes
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+TELEGRAM_BOT_USERNAME = os.environ.get("TELEGRAM_BOT_USERNAME", "minhadietazbot")
 CRON_SECRET = os.environ.get("CRON_SECRET", "")
 TIMEZONE = os.environ.get("TIMEZONE", "America/Sao_Paulo")
 # Tolerância (min): manda a refeição se o horário caiu nos últimos N minutos.
 REMINDER_WINDOW_MIN = int(os.environ.get("REMINDER_WINDOW_MIN", "15"))
+# Segredo do webhook do Telegram (validado no header). Cai no CRON_SECRET se vazio.
+TELEGRAM_WEBHOOK_SECRET = os.environ.get("TELEGRAM_WEBHOOK_SECRET") or CRON_SECRET or "webhook"
+# URL pública do app (o Render fornece RENDER_EXTERNAL_URL automaticamente).
+PUBLIC_URL = os.environ.get("PUBLIC_URL") or os.environ.get("RENDER_EXTERNAL_URL", "")
 
 FRONTEND_DIR = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "..", "frontend")
@@ -129,13 +135,33 @@ def tg_call(method, params):
         return json.loads(r.read().decode())
 
 
-def tg_send(chat_id, text):
-    return tg_call("sendMessage", {
+def tg_send(chat_id, text, reply_markup=None):
+    params = {
         "chat_id": chat_id,
         "text": text,
         "parse_mode": "HTML",
         "disable_web_page_preview": "true",
-    })
+    }
+    if reply_markup is not None:
+        params["reply_markup"] = json.dumps(reply_markup)
+    return tg_call("sendMessage", params)
+
+
+def tg_answer_callback(callback_id, text=""):
+    try:
+        return tg_call("answerCallbackQuery", {"callback_query_id": callback_id, "text": text})
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def tg_remove_keyboard(chat_id, message_id):
+    try:
+        return tg_call("editMessageReplyMarkup", {
+            "chat_id": chat_id, "message_id": message_id,
+            "reply_markup": json.dumps({"inline_keyboard": []}),
+        })
+    except Exception:  # noqa: BLE001
+        return None
 
 
 def tg_updates():
@@ -688,6 +714,17 @@ def telegram_test():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/api/telegram/link-code", methods=["POST"])
+@require_auth
+def telegram_link_code():
+    """Gera um código e o deep-link para o usuário conectar o Telegram."""
+    code = secrets.token_hex(3)
+    db().collection("tg_links").document(code).set(
+        {"uid": g.uid, "criado_em": datetime.datetime.utcnow().isoformat()})
+    link = f"https://t.me/{TELEGRAM_BOT_USERNAME}?start={code}"
+    return jsonify({"code": code, "link": link})
+
+
 # ---------------------------------------------------------------------------
 # CRON: enviar lembretes das refeições que estão na hora
 # ---------------------------------------------------------------------------
@@ -739,7 +776,12 @@ def cron_send_reminders():
             chave = f"{idx}"
             if 0 <= delta_min <= REMINDER_WINDOW_MIN and chave not in ja_enviados:
                 try:
-                    tg_send(chat_id, format_meal_message(ref))
+                    botoes = {"inline_keyboard": [[
+                        {"text": "✅ Cumpri", "callback_data": f"ok|{hoje}|{idx}"},
+                        {"text": "🔄 Outra coisa", "callback_data": f"other|{hoje}|{idx}"},
+                        {"text": "⏭️ Pulei", "callback_data": f"skip|{hoje}|{idx}"},
+                    ]]}
+                    tg_send(chat_id, format_meal_message(ref), reply_markup=botoes)
                     ja_enviados.add(chave)
                     enviados_total += 1
                     detalhes.append({"uid": user_doc.id, "refeicao": ref.get("nome")})
@@ -749,6 +791,183 @@ def cron_send_reminders():
         marca_ref.set({"enviados": list(ja_enviados)}, merge=True)
 
     return jsonify({"hora": agora.isoformat(), "enviados": enviados_total, "detalhes": detalhes})
+
+
+# ---------------------------------------------------------------------------
+# Telegram Webhook: recebe respostas e registra consumo/aderência
+# ---------------------------------------------------------------------------
+def find_uid_by_chat(chat_id):
+    q = (db().collection("usuarios")
+         .where("telegram_chat_id", "==", str(chat_id)).limit(1).stream())
+    for d in q:
+        return d.id
+    return None
+
+
+def latest_diet(uid):
+    docs = list(db().collection("usuarios").document(uid).collection("dietas")
+                .order_by("criado_em", direction=firestore.Query.DESCENDING).limit(1).stream())
+    return (docs[0].to_dict() or {}).get("dieta") if docs else None
+
+
+def update_consumo(uid, dia, idx, entry):
+    ref = db().collection("usuarios").document(uid).collection("consumo").document(dia)
+    data = ref.get().to_dict() or {"data": dia, "refeicoes": {}}
+    if data.get("alvo_kcal") is None:
+        data["alvo_kcal"] = (latest_diet(uid) or {}).get("calorias_alvo_dia")
+    refs = data.get("refeicoes") or {}
+    refs[str(idx)] = entry
+    data["refeicoes"] = refs
+    data["total_kcal"] = sum((e.get("kcal") or 0) for e in refs.values())
+    data["atualizado_em"] = datetime.datetime.utcnow().isoformat()
+    ref.set(data)
+    return data["total_kcal"]
+
+
+def set_pending(uid, dia, idx):
+    db().collection("usuarios").document(uid).set(
+        {"tg_pendente": {"data": dia, "idx": idx}}, merge=True)
+
+
+def get_pending(uid):
+    return (db().collection("usuarios").document(uid).get().to_dict() or {}).get("tg_pendente")
+
+
+def clear_pending(uid):
+    db().collection("usuarios").document(uid).set(
+        {"tg_pendente": firestore.DELETE_FIELD}, merge=True)
+
+
+def estimate_calories(text):
+    prompt = ("Estime as calorias do que a pessoa comeu. Responda APENAS JSON "
+              '{"itens":[{"alimento":string,"kcal":number}],"kcal_total":number}. '
+              f"Comida: {text}")
+    try:
+        resp = gemini().generate_content(prompt)
+        parsed = _safe_json((resp.text or "").strip())
+        if not parsed.get("kcal_total"):
+            parsed["kcal_total"] = sum((i.get("kcal") or 0) for i in parsed.get("itens", []))
+        return parsed
+    except Exception as e:  # noqa: BLE001
+        return {"kcal_total": 0, "erro": str(e)}
+
+
+def _meal_name(uid, idx):
+    refs = (latest_diet(uid) or {}).get("refeicoes") or []
+    return refs[idx].get("nome", "Refeição") if 0 <= idx < len(refs) else "Refeição"
+
+
+def _meal_kcal(uid, idx):
+    refs = (latest_diet(uid) or {}).get("refeicoes") or []
+    return (refs[idx].get("kcal_total") or 0) if 0 <= idx < len(refs) else 0
+
+
+def handle_callback(cq):
+    cid = cq.get("id")
+    chat = cq.get("message", {}).get("chat", {}).get("id")
+    mid = cq.get("message", {}).get("message_id")
+    parts = (cq.get("data") or "").split("|")
+    if len(parts) != 3:
+        tg_answer_callback(cid); return
+    action, dia, idx = parts[0], parts[1], int(parts[2])
+    uid = find_uid_by_chat(chat)
+    if not uid:
+        tg_answer_callback(cid, "Conta não encontrada."); return
+    nome = _meal_name(uid, idx)
+
+    if action == "ok":
+        kcal = _meal_kcal(uid, idx)
+        total = update_consumo(uid, dia, idx, {"nome": nome, "status": "cumpriu", "kcal": kcal})
+        tg_answer_callback(cid, "Registrado ✅")
+        tg_remove_keyboard(chat, mid)
+        tg_send(chat, f"✅ <b>{_esc(nome)}</b> cumprida (+{kcal} kcal). Total de hoje: <b>{total} kcal</b>.")
+    elif action == "skip":
+        total = update_consumo(uid, dia, idx, {"nome": nome, "status": "pulou", "kcal": 0})
+        tg_answer_callback(cid, "Anotado")
+        tg_remove_keyboard(chat, mid)
+        tg_send(chat, f"⏭️ <b>{_esc(nome)}</b> marcada como pulada. Total de hoje: <b>{total} kcal</b>.")
+    elif action == "other":
+        set_pending(uid, dia, idx)
+        tg_answer_callback(cid, "Me conta o que comeu")
+        tg_remove_keyboard(chat, mid)
+        tg_send(chat, f"O que você comeu no lugar de <b>{_esc(nome)}</b>? Escreva aqui que eu calculo as calorias.")
+    else:
+        tg_answer_callback(cid)
+
+
+def handle_message(msg):
+    chat = msg.get("chat", {}).get("id")
+    text = (msg.get("text") or "").strip()
+
+    # /start <code> -> vincula o chat a um usuário do app
+    if text.startswith("/start"):
+        parts = text.split(maxsplit=1)
+        if len(parts) > 1:
+            code = parts[1].strip()
+            link = db().collection("tg_links").document(code).get()
+            if link.exists:
+                luid = (link.to_dict() or {}).get("uid")
+                db().collection("usuarios").document(luid).set({"telegram_chat_id": str(chat)}, merge=True)
+                db().collection("tg_links").document(code).delete()
+                tg_send(chat, "✅ <b>Telegram conectado!</b> Você vai receber os lembretes das refeições aqui e pode registrar o que comeu.")
+                return
+        tg_send(chat, "Oi! Para conectar, abra o app, vá em Criar perfil → Telegram e toque em “Conectar meu Telegram”.")
+        return
+
+    uid = find_uid_by_chat(chat)
+    if not uid:
+        return
+    pend = get_pending(uid)
+    if not pend:
+        tg_send(chat, "Recebi 👍 Quando chegar o horário de uma refeição, use os botões para registrar (Cumpri / Outra coisa / Pulei).")
+        return
+    est = estimate_calories(text)
+    kcal = int(est.get("kcal_total") or 0)
+    idx, dia = pend.get("idx"), pend.get("data")
+    nome = _meal_name(uid, idx)
+    total = update_consumo(uid, dia, idx, {"nome": nome, "status": "substituiu", "itens": text, "kcal": kcal})
+    clear_pending(uid)
+    tg_send(chat, f"Anotei no lugar de <b>{_esc(nome)}</b>: “{_esc(text)}” ≈ <b>{kcal} kcal</b>.\nTotal de hoje: <b>{total} kcal</b>.")
+
+
+@app.route("/telegram/webhook", methods=["POST"])
+def telegram_webhook():
+    if request.headers.get("X-Telegram-Bot-Api-Secret-Token") != TELEGRAM_WEBHOOK_SECRET:
+        return jsonify({"ok": False}), 403
+    upd = request.get_json(silent=True) or {}
+    try:
+        if "callback_query" in upd:
+            handle_callback(upd["callback_query"])
+        elif "message" in upd and upd["message"].get("text"):
+            handle_message(upd["message"])
+    except Exception as e:  # noqa: BLE001
+        print("[webhook] erro:", e)
+    return jsonify({"ok": True})
+
+
+@app.route("/telegram/setup", methods=["GET", "POST"])
+def telegram_setup():
+    if (request.args.get("secret") or "") != CRON_SECRET:
+        return jsonify({"error": "não autorizado"}), 401
+    base = (request.args.get("base") or PUBLIC_URL or "").rstrip("/")
+    if not base:
+        return jsonify({"error": "URL pública não definida. Passe ?base=https://seu-app.onrender.com"}), 400
+    url = base + "/telegram/webhook"
+    res = tg_call("setWebhook", {
+        "url": url,
+        "secret_token": TELEGRAM_WEBHOOK_SECRET,
+        "allowed_updates": json.dumps(["message", "callback_query"]),
+    })
+    return jsonify({"webhook": url, "resultado": res})
+
+
+@app.route("/api/consumo/today", methods=["GET"])
+@require_auth
+def consumo_today():
+    dia = now_local().strftime("%Y-%m-%d")
+    d = (db().collection("usuarios").document(g.uid)
+         .collection("consumo").document(dia).get().to_dict()) or {}
+    return jsonify(d)
 
 
 # ---------------------------------------------------------------------------
