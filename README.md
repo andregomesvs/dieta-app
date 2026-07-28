@@ -71,7 +71,7 @@ abra **http://localhost:5000** no navegador.
 
 ## Modelo de IA e custo
 
-- O modelo é configurável em `.env` (`GEMINI_MODEL`). O padrão `gemini-1.5-flash`
+- O modelo é configurável em `.env` (`GEMINI_MODEL`). O padrão `gemini-2.0-flash`
   é rápido e está no tier gratuito do Gemini.
 - Firebase Auth e Firestore têm plano gratuito (Spark) suficiente para uso
   pessoal. O Gemini tem um tier gratuito com limite diário de requisições —

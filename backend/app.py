@@ -38,7 +38,7 @@ load_dotenv()
 # Configuração
 # ---------------------------------------------------------------------------
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
-GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-1.5-flash")
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
 CRED_PATH = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "./firebase-service-account.json")
 FIREBASE_PROJECT_ID = os.environ.get("FIREBASE_PROJECT_ID", "")
 
@@ -156,6 +156,23 @@ def static_files(path):
 @app.route("/health")
 def health():
     return jsonify({"status": "ok", "model": GEMINI_MODEL})
+
+
+@app.route("/models")
+def list_models():
+    """Diagnóstico: lista os modelos disponíveis para a chave configurada."""
+    if not GEMINI_API_KEY:
+        return jsonify({"error": "GEMINI_API_KEY não configurada"}), 500
+    try:
+        genai.configure(api_key=GEMINI_API_KEY)
+        disponiveis = [
+            m.name
+            for m in genai.list_models()
+            if "generateContent" in getattr(m, "supported_generation_methods", [])
+        ]
+        return jsonify({"modelo_atual": GEMINI_MODEL, "disponiveis": disponiveis})
+    except Exception as e:  # noqa: BLE001
+        return jsonify({"error": str(e)}), 500
 
 
 # ---------------------------------------------------------------------------
