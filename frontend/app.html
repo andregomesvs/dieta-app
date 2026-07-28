@@ -403,7 +403,13 @@
   async function api(path, opts = {}) {
     opts.headers = Object.assign({ "Authorization": "Bearer " + token }, opts.headers || {});
     const r = await fetch(API_BASE + path, opts);
-    if (!r.ok) { const e = await r.json().catch(() => ({ error: r.statusText })); throw new Error(e.error || "Erro"); }
+    if (!r.ok) {
+      let detalhe;
+      try { const j = await r.json(); detalhe = j.error || JSON.stringify(j); }
+      catch (_) { detalhe = (await r.text().catch(() => "")) || r.statusText || ("HTTP " + r.status); }
+      if (detalhe && detalhe.length > 300) detalhe = detalhe.slice(0, 300) + "…";
+      throw new Error(`(${r.status}) ${detalhe}`);
+    }
     return r.json();
   }
   function setMsg(el, t, k) { el.className = "msg" + (k ? " " + k : ""); el.innerHTML = t; }
