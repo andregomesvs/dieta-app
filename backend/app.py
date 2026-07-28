@@ -421,11 +421,17 @@ Devolva APENAS um JSON válido (sem markdown) no formato:
     }
   ],
   "recomendacoes_dieta": [string],
-  "aviso": "Interpretação gerada por IA. Leve seus exames a um médico ou nutricionista."
+  "suplementos_sugeridos": [
+    {"nome": string, "motivo": string}  // ex.: {"nome":"Vitamina D3","motivo":"nível abaixo da faixa ideal"}
+  ],
+  "aviso": "Interpretação gerada por IA. Leve seus exames a um médico ou nutricionista antes de suplementar."
 }
 
 Ordene os destaques do mais importante para o menos. Priorize itens com status \
-'alerta' e 'atencao'. Foque no que dá para melhorar pela alimentação."""
+'alerta' e 'atencao'. Foque no que dá para melhorar pela alimentação. Em \
+"suplementos_sugeridos", indique apenas o que os exames justificarem (ex.: \
+vitamina D baixa, ferritina baixa, ômega-3 para HDL baixo); deixe a lista \
+vazia se não houver indicação clara."""
 
 
 @app.route("/api/health-analysis", methods=["POST"])
@@ -506,6 +512,9 @@ Devolva APENAS um JSON válido (sem markdown) neste formato:
     "carboidratos": [{"alimento": string, "porcao": string, "kcal": number}],
     "frutas": [{"alimento": string, "porcao": string, "kcal": number}]
   },
+  "suplementos": [
+    {"nome": string, "motivo": string}  // só se os exames justificarem; senão lista vazia
+  ],
   "observacoes": string,
   "aviso": "Este plano é uma sugestão gerada por IA e não substitui um nutricionista."
 }
@@ -532,6 +541,16 @@ def generate_diet():
     rotina_alimentar = data.get("rotina_alimentar", "")
     restricoes = data.get("restricoes", "")
 
+    # contexto clínico salvo (exame de sangue e análise), se houver
+    salvo = db().collection("usuarios").document(g.uid).get().to_dict() or {}
+    exames_sangue = salvo.get("exames_sangue") or {}
+    analise = salvo.get("analise") or {}
+    contexto = ""
+    if exames_sangue.get("marcadores"):
+        contexto += "\n\nExame de sangue (marcadores):\n" + json.dumps(exames_sangue, ensure_ascii=False, indent=2)
+    if analise.get("destaques"):
+        contexto += "\n\nAnálise de saúde já feita (destaques):\n" + json.dumps(analise.get("destaques"), ensure_ascii=False, indent=2)
+
     user_msg = f"""Dados do usuário:
 {json.dumps(perfil, ensure_ascii=False, indent=2)}
 
@@ -539,9 +558,11 @@ Objetivo: {objetivo}
 Prazo do objetivo: {prazo}
 Rotina de treino (com horários): {rotina_treino}
 Rotina alimentar atual e horários: {rotina_alimentar}
-Restrições / preferências alimentares: {restricoes or "nenhuma informada"}
+Restrições / preferências alimentares: {restricoes or "nenhuma informada"}{contexto}
 
-Monte a dieta seguindo o formato JSON solicitado."""
+Leve em conta a composição corporal e, se houver, os exames de sangue e a \
+análise acima: ajuste a dieta a alterações relevantes e sugira suplementos \
+apenas quando os exames justificarem. Monte a dieta no formato JSON solicitado."""
 
     try:
         resp = gemini(system_instruction=DIET_SYSTEM).generate_content(user_msg)

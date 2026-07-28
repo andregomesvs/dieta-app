@@ -277,13 +277,27 @@
     <div style="margin-top:8px; font-size:15px; color:var(--muted); line-height:1.55;">O que a IA destacou da sua bioimpedância e do exame de sangue.</div>
   </div>
 
-  <label class="dropzone" for="analiseBloodInput" style="margin-top:18px;">
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#C0392B" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="margin:0 auto;"><path d="M12 2s5 5.5 5 10a5 5 0 0 1-10 0c0-4.5 5-10 5-10z"></path></svg>
-    <div class="t1" id="analiseBloodTitle">Anexar exame de sangue (PDF ou imagem)</div>
-    <div class="t2">a IA lê os marcadores; depois toque em “Atualizar análise”</div>
-  </label>
-  <input id="analiseBloodInput" type="file" accept="application/pdf,image/*" style="display:none;" />
-  <div id="analiseBloodMsg" class="msg"></div>
+  <div style="margin-top:18px; display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+    <div>
+      <label class="dropzone" for="analiseBioInput" style="padding:24px 16px;">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#14735A" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="margin:0 auto;"><path d="M12 16V4"></path><path d="M8 8l4-4 4 4"></path><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"></path></svg>
+        <div class="t1" id="analiseBioTitle" style="font-size:14px;">Bioimpedância (PDF)</div>
+        <div class="t2">preenche composição corporal</div>
+      </label>
+      <input id="analiseBioInput" type="file" accept="application/pdf" style="display:none;" />
+      <div id="analiseBioMsg" class="msg"></div>
+    </div>
+    <div>
+      <label class="dropzone" for="analiseBloodInput" style="padding:24px 16px;">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#C0392B" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="margin:0 auto;"><path d="M12 2s5 5.5 5 10a5 5 0 0 1-10 0c0-4.5 5-10 5-10z"></path></svg>
+        <div class="t1" id="analiseBloodTitle" style="font-size:14px;">Exame de sangue (PDF/imagem)</div>
+        <div class="t2">lê os marcadores</div>
+      </label>
+      <input id="analiseBloodInput" type="file" accept="application/pdf,image/*" style="display:none;" />
+      <div id="analiseBloodMsg" class="msg"></div>
+    </div>
+  </div>
+  <div style="font-size:12.5px; color:var(--muted3); margin-top:8px;">Anexe um ou os dois. Depois toque em <b>Atualizar análise</b>.</div>
 
   <div id="analiseMsg" class="msg"></div>
   <div id="analiseBody" style="margin-top:14px;"></div>
@@ -921,6 +935,14 @@
       a.recomendacoes_dieta.forEach((r) => { html += `<li>${esc(r)}</li>`; });
       html += `</ul></div>`;
     }
+    if ((a.suplementos_sugeridos || []).length) {
+      html += `<div class="card" style="margin-top:12px;"><div class="card-label"><span>Suplementos sugeridos</span></div>
+        <div style="margin-top:12px; display:grid; gap:8px;">`;
+      a.suplementos_sugeridos.forEach((s) => {
+        html += `<div style="font-size:14px;"><b>${esc(s.nome || "")}</b>${s.motivo ? ` <span style="color:var(--muted3);">— ${esc(s.motivo)}</span>` : ""}</div>`;
+      });
+      html += `</div></div>`;
+    }
     html += bloodMarkersHtml();
     html += `<div class="disclaimer" style="margin-top:14px;">${esc(a.aviso || "Interpretação gerada por IA — leve seus exames a um médico ou nutricionista.")}</div>`;
     $("analiseBody").innerHTML = html;
@@ -1019,10 +1041,35 @@
     $("analiseBloodTitle").textContent = f.name;
     const ok = await handleBloodFile(f, $("analiseBloodMsg"));
     if (ok) {
-      // mostra os marcadores já lidos e sugere gerar a análise
       openAnaliseKeepMsg();
       setMsg($("analiseMsg"), "Exame lido. Clique em “Atualizar análise” para os destaques.", "ok");
     }
+  };
+
+  async function handleBioFile(file, msgEl) {
+    loading(msgEl, "Lendo a bioimpedância...");
+    try {
+      const fd = new FormData(); fd.append("file", file);
+      const res = await api("/api/analyze-pdf", { method: "POST", body: fd });
+      const d = res.data || {};
+      const upd = {};
+      ["nome","sexo","idade","altura_cm","peso_kg","imc","percentual_gordura",
+       "massa_magra_kg","gordura_visceral","taxa_metabolica_basal_kcal"]
+        .forEach((k) => { if (d[k] != null) upd[k] = d[k]; });
+      if (Object.keys(upd).length)
+        await api("/api/profile", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(upd) });
+      Object.assign(profile, upd);
+      setMsg(msgEl, "Bioimpedância lida e salva.", "ok");
+      return true;
+    } catch (e) { setMsg(msgEl, e.message, "err"); return false; }
+  }
+
+  $("analiseBioInput").onchange = async () => {
+    const f = $("analiseBioInput").files[0];
+    if (!f) return;
+    $("analiseBioTitle").textContent = f.name;
+    const ok = await handleBioFile(f, $("analiseBioMsg"));
+    if (ok) setMsg($("analiseMsg"), "Bioimpedância lida. Clique em “Atualizar análise”.", "ok");
   };
   function openAnaliseKeepMsg() {
     if (profile.analise && (profile.analise.destaques || profile.analise.resumo)) renderAnalise(profile.analise);
@@ -1096,6 +1143,18 @@
         html += `</div></div>`;
       });
       html += `</div>`;
+    }
+
+    const sups = d.suplementos || [];
+    if (sups.length) {
+      html += `<div style="margin-top:20px; padding-top:16px; border-top:1px solid var(--line);">
+        <div class="serif" style="font-size:22px;">Suplementação sugerida</div>
+        <div style="font-size:12.5px; color:var(--muted3); margin-top:2px;">Com base nos seus exames. Confirme com um profissional antes de usar.</div>
+        <div style="margin-top:12px; display:grid; gap:8px;">`;
+      sups.forEach((s) => {
+        html += `<div style="font-size:14px;"><b>${esc(s.nome || "")}</b>${s.motivo ? ` <span style="color:var(--muted3);">— ${esc(s.motivo)}</span>` : ""}</div>`;
+      });
+      html += `</div></div>`;
     }
 
     if (d.observacoes) html += `<p style="font-size:13px; color:var(--muted); margin-top:16px;">${esc(d.observacoes)}</p>`;
