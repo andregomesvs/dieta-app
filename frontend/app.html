@@ -1103,47 +1103,43 @@
       <div class="box"><b>${br(m.carbo_g)}g</b><small>carbo</small></div>
       <div class="box"><b>${br(m.gordura_g)}g</b><small>gordura</small></div></div>`;
     const sub = d.substituicoes || {};
-    const subMap = { proteina: sub.proteinas, carboidrato: sub.carboidratos, fruta: sub.frutas };
-    const grpLabel = { proteina: "Trocar proteína", carboidrato: "Trocar carboidrato", fruta: "Trocar fruta" };
+    const groupData = {
+      proteina: { titulo: "Proteínas", itens: sub.proteinas || [] },
+      carboidrato: { titulo: "Carboidratos", itens: sub.carboidratos || [] },
+      fruta: { titulo: "Frutas", itens: sub.frutas || [] },
+    };
+    const temSub = Object.values(groupData).some((g) => g.itens.length);
 
     (d.refeicoes || []).forEach((r, mi) => {
       html += `<div class="diet-meal"><div class="mh"><span class="h">${esc(r.nome || "")}</span>
         <span class="t">${esc(r.horario || "")} · ${r.kcal_total ?? "?"} kcal</span></div><ul>`;
-      (r.itens || []).forEach((it, ii) => {
-        const g = it.grupo;
-        const opts = subMap[g] || [];
-        const canSwap = ["proteina","carboidrato","fruta"].includes(g) && opts.length;
-        html += `<li>
-          <span class="it-text" data-m="${mi}" data-i="${ii}">${esc(it.alimento || "")} <span class="it-sub">— ${esc(it.porcao || "")}${it.kcal ? " · " + it.kcal + " kcal" : ""}</span></span>`;
-        if (canSwap) {
-          html += `<button class="swap-btn" data-m="${mi}" data-i="${ii}" data-g="${g}">trocar</button>
-            <div class="swap-list hidden" id="sw-${mi}-${ii}"><div class="st">${grpLabel[g]}</div>`;
-          opts.forEach((o, oi) => {
-            html += `<button class="swap-opt" data-m="${mi}" data-i="${ii}" data-o="${oi}" data-g="${g}">${esc(o.alimento || "")} <span>${esc(o.porcao || "")}${o.kcal ? " · " + o.kcal + " kcal" : ""}</span></button>`;
+      (r.itens || []).forEach((it) => {
+        html += `<li>${esc(it.alimento || "")} <span class="it-sub">— ${esc(it.porcao || "")}${it.kcal ? " · " + it.kcal + " kcal" : ""}</span></li>`;
+      });
+      html += `</ul>`;
+
+      if (temSub) {
+        // grupos presentes nesta refeição; se os itens não vierem marcados, mostra todos os disponíveis
+        let grupos = [...new Set((r.itens || []).map((it) => it.grupo)
+          .filter((g) => groupData[g] && groupData[g].itens.length))];
+        if (!grupos.length) grupos = Object.keys(groupData).filter((g) => groupData[g].itens.length);
+        if (grupos.length) {
+          html += `<button class="sub-toggle" data-m="${mi}">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:-2px; margin-right:6px;"><path d="M17 3l4 4-4 4"></path><path d="M21 7H7a4 4 0 0 0-4 4"></path><path d="M7 21l-4-4 4-4"></path><path d="M3 17h14a4 4 0 0 0 4-4"></path></svg>
+            Lista de substituição</button>
+            <div class="sub-panel hidden" id="sp-${mi}">`;
+          grupos.forEach((g) => {
+            html += `<div class="sub-group"><div class="gt">${groupData[g].titulo}</div><div class="sub-chips">`;
+            groupData[g].itens.forEach((it) => {
+              html += `<span class="sub-chip"><b>${esc(it.alimento || "")}</b> ${esc(it.porcao || "")} ${it.kcal ? `<span>${it.kcal} kcal</span>` : ""}</span>`;
+            });
+            html += `</div></div>`;
           });
           html += `</div>`;
         }
-        html += `</li>`;
-      });
-      html += `</ul></div>`;
-    });
-
-    const grupos = [
-      ["Proteínas", sub.proteinas], ["Carboidratos", sub.carboidratos], ["Frutas", sub.frutas],
-    ].filter((g) => (g[1] || []).length);
-    if (grupos.length) {
-      html += `<div style="margin-top:20px; padding-top:16px; border-top:1px solid var(--line);">
-        <div class="serif" style="font-size:22px;">Substituições</div>
-        <div style="font-size:12.5px; color:var(--muted3); margin-top:2px;">Troque qualquer item por uma opção equivalente do mesmo grupo.</div>`;
-      grupos.forEach(([titulo, itens]) => {
-        html += `<div class="sub-group"><div class="gt">${titulo}</div><div class="sub-chips">`;
-        itens.forEach((it) => {
-          html += `<span class="sub-chip"><b>${esc(it.alimento || "")}</b> ${esc(it.porcao || "")} ${it.kcal ? `<span>${it.kcal} kcal</span>` : ""}</span>`;
-        });
-        html += `</div></div>`;
-      });
+      }
       html += `</div>`;
-    }
+    });
 
     const sups = d.suplementos || [];
     if (sups.length) {
@@ -1161,20 +1157,14 @@
     html += `<div class="disclaimer">${esc(d.aviso || "Sugestão gerada por IA — não substitui um nutricionista.")}</div>`;
     area.innerHTML = html;
 
-    // botões de troca por item
-    area.querySelectorAll(".swap-btn").forEach((b) => {
+    // abre/fecha a lista de substituição de cada refeição
+    area.querySelectorAll(".sub-toggle").forEach((b) => {
       b.onclick = () => {
-        const list = document.getElementById(`sw-${b.dataset.m}-${b.dataset.i}`);
-        if (list) list.classList.toggle("hidden");
-      };
-    });
-    area.querySelectorAll(".swap-opt").forEach((o) => {
-      o.onclick = () => {
-        const opt = (subMap[o.dataset.g] || [])[Number(o.dataset.o)];
-        if (!opt) return;
-        const alvo = area.querySelector(`.it-text[data-m="${o.dataset.m}"][data-i="${o.dataset.i}"]`);
-        if (alvo) alvo.innerHTML = `<span class="it-swapped">${esc(opt.alimento || "")}</span> <span class="it-sub">— ${esc(opt.porcao || "")}${opt.kcal ? " · " + opt.kcal + " kcal" : ""}</span>`;
-        document.getElementById(`sw-${o.dataset.m}-${o.dataset.i}`).classList.add("hidden");
+        const p = document.getElementById(`sp-${b.dataset.m}`);
+        if (p) {
+          const aberto = !p.classList.toggle("hidden");
+          b.classList.toggle("on", aberto);
+        }
       };
     });
   }
