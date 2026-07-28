@@ -277,6 +277,14 @@
     <div style="margin-top:8px; font-size:15px; color:var(--muted); line-height:1.55;">O que a IA destacou da sua bioimpedância e do exame de sangue.</div>
   </div>
 
+  <label class="dropzone" for="analiseBloodInput" style="margin-top:18px;">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#C0392B" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="margin:0 auto;"><path d="M12 2s5 5.5 5 10a5 5 0 0 1-10 0c0-4.5 5-10 5-10z"></path></svg>
+    <div class="t1" id="analiseBloodTitle">Anexar exame de sangue (PDF ou imagem)</div>
+    <div class="t2">a IA lê os marcadores; depois toque em “Atualizar análise”</div>
+  </label>
+  <input id="analiseBloodInput" type="file" accept="application/pdf,image/*" style="display:none;" />
+  <div id="analiseBloodMsg" class="msg"></div>
+
   <div id="analiseMsg" class="msg"></div>
   <div id="analiseBody" style="margin-top:14px;"></div>
 </section>
@@ -983,22 +991,43 @@
     finally { $("btnSaveMedicao").disabled = false; }
   };
 
-  // ---------- upload exame de sangue ----------
-  $("bloodInput").onchange = async () => {
-    const f = $("bloodInput").files[0];
-    if (!f) return;
-    $("bloodTitle").textContent = f.name;
-    loading($("bloodMsg"), "Lendo o exame de sangue...");
+  // ---------- upload exame de sangue (reutilizável) ----------
+  async function handleBloodFile(file, msgEl) {
+    loading(msgEl, "Lendo o exame de sangue...");
     try {
-      const fd = new FormData(); fd.append("file", f);
+      const fd = new FormData(); fd.append("file", file);
       const res = await api("/api/analyze-blood", { method: "POST", body: fd });
       bloodData = res.data || {};
       await api("/api/profile", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ exames_sangue: bloodData }) });
       profile.exames_sangue = bloodData;
       const n = (bloodData.marcadores || []).length;
-      setMsg($("bloodMsg"), `${n} marcador(es) lido(s) e salvos. A análise aparece na aba Análise.`, "ok");
-    } catch (e) { setMsg($("bloodMsg"), e.message, "err"); }
+      setMsg(msgEl, `${n} marcador(es) lido(s) e salvos.`, "ok");
+      return true;
+    } catch (e) { setMsg(msgEl, e.message, "err"); return false; }
+  }
+
+  $("bloodInput").onchange = async () => {
+    const f = $("bloodInput").files[0];
+    if (!f) return;
+    $("bloodTitle").textContent = f.name;
+    await handleBloodFile(f, $("bloodMsg"));
   };
+
+  $("analiseBloodInput").onchange = async () => {
+    const f = $("analiseBloodInput").files[0];
+    if (!f) return;
+    $("analiseBloodTitle").textContent = f.name;
+    const ok = await handleBloodFile(f, $("analiseBloodMsg"));
+    if (ok) {
+      // mostra os marcadores já lidos e sugere gerar a análise
+      openAnaliseKeepMsg();
+      setMsg($("analiseMsg"), "Exame lido. Clique em “Atualizar análise” para os destaques.", "ok");
+    }
+  };
+  function openAnaliseKeepMsg() {
+    if (profile.analise && (profile.analise.destaques || profile.analise.resumo)) renderAnalise(profile.analise);
+    else $("analiseBody").innerHTML = bloodMarkersHtml() || `<div class="card"><div class="empty">Exame carregado. Gere a análise para ver os destaques.</div></div>`;
+  }
 
   // ---------- DIETA ----------
   function openDiet(id) {
@@ -1026,16 +1055,32 @@
       <div class="box"><b>${br(m.proteina_g)}g</b><small>proteína</small></div>
       <div class="box"><b>${br(m.carbo_g)}g</b><small>carbo</small></div>
       <div class="box"><b>${br(m.gordura_g)}g</b><small>gordura</small></div></div>`;
-    (d.refeicoes || []).forEach((r) => {
+    const sub = d.substituicoes || {};
+    const subMap = { proteina: sub.proteinas, carboidrato: sub.carboidratos, fruta: sub.frutas };
+    const grpLabel = { proteina: "Trocar proteína", carboidrato: "Trocar carboidrato", fruta: "Trocar fruta" };
+
+    (d.refeicoes || []).forEach((r, mi) => {
       html += `<div class="diet-meal"><div class="mh"><span class="h">${esc(r.nome || "")}</span>
         <span class="t">${esc(r.horario || "")} · ${r.kcal_total ?? "?"} kcal</span></div><ul>`;
-      (r.itens || []).forEach((it) => {
-        html += `<li>${esc(it.alimento || "")} <span>— ${esc(it.porcao || "")}${it.kcal ? " · " + it.kcal + " kcal" : ""}</span></li>`;
+      (r.itens || []).forEach((it, ii) => {
+        const g = it.grupo;
+        const opts = subMap[g] || [];
+        const canSwap = ["proteina","carboidrato","fruta"].includes(g) && opts.length;
+        html += `<li>
+          <span class="it-text" data-m="${mi}" data-i="${ii}">${esc(it.alimento || "")} <span class="it-sub">— ${esc(it.porcao || "")}${it.kcal ? " · " + it.kcal + " kcal" : ""}</span></span>`;
+        if (canSwap) {
+          html += `<button class="swap-btn" data-m="${mi}" data-i="${ii}" data-g="${g}">trocar</button>
+            <div class="swap-list hidden" id="sw-${mi}-${ii}"><div class="st">${grpLabel[g]}</div>`;
+          opts.forEach((o, oi) => {
+            html += `<button class="swap-opt" data-m="${mi}" data-i="${ii}" data-o="${oi}" data-g="${g}">${esc(o.alimento || "")} <span>${esc(o.porcao || "")}${o.kcal ? " · " + o.kcal + " kcal" : ""}</span></button>`;
+          });
+          html += `</div>`;
+        }
+        html += `</li>`;
       });
       html += `</ul></div>`;
     });
 
-    const sub = d.substituicoes || {};
     const grupos = [
       ["Proteínas", sub.proteinas], ["Carboidratos", sub.carboidratos], ["Frutas", sub.frutas],
     ].filter((g) => (g[1] || []).length);
@@ -1056,6 +1101,23 @@
     if (d.observacoes) html += `<p style="font-size:13px; color:var(--muted); margin-top:16px;">${esc(d.observacoes)}</p>`;
     html += `<div class="disclaimer">${esc(d.aviso || "Sugestão gerada por IA — não substitui um nutricionista.")}</div>`;
     area.innerHTML = html;
+
+    // botões de troca por item
+    area.querySelectorAll(".swap-btn").forEach((b) => {
+      b.onclick = () => {
+        const list = document.getElementById(`sw-${b.dataset.m}-${b.dataset.i}`);
+        if (list) list.classList.toggle("hidden");
+      };
+    });
+    area.querySelectorAll(".swap-opt").forEach((o) => {
+      o.onclick = () => {
+        const opt = (subMap[o.dataset.g] || [])[Number(o.dataset.o)];
+        if (!opt) return;
+        const alvo = area.querySelector(`.it-text[data-m="${o.dataset.m}"][data-i="${o.dataset.i}"]`);
+        if (alvo) alvo.innerHTML = `<span class="it-swapped">${esc(opt.alimento || "")}</span> <span class="it-sub">— ${esc(opt.porcao || "")}${opt.kcal ? " · " + opt.kcal + " kcal" : ""}</span>`;
+        document.getElementById(`sw-${o.dataset.m}-${o.dataset.i}`).classList.add("hidden");
+      };
+    });
   }
 </script>
 </body>

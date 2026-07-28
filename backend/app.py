@@ -497,7 +497,7 @@ Devolva APENAS um JSON válido (sem markdown) neste formato:
     {
       "nome": string,
       "horario": string,
-      "itens": [{"alimento": string, "porcao": string, "kcal": number}],
+      "itens": [{"alimento": string, "porcao": string, "kcal": number, "grupo": "proteina"|"carboidrato"|"fruta"|"outro"}],
       "kcal_total": number
     }
   ],
@@ -509,6 +509,11 @@ Devolva APENAS um JSON válido (sem markdown) neste formato:
   "observacoes": string,
   "aviso": "Este plano é uma sugestão gerada por IA e não substitui um nutricionista."
 }
+
+Classifique cada item das refeições no campo "grupo": "proteina" para carnes, \
+ovos, laticínios proteicos e leguminosas; "carboidrato" para arroz, pães, \
+tubérculos, massas e cereais; "fruta" para frutas; "outro" para vegetais, \
+gorduras, bebidas e temperos.
 
 Em "substituicoes", forneça de 5 a 7 opções equivalentes em cada grupo \
 (proteinas, carboidratos, frutas), com a porção ajustada para calorias \
