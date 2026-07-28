@@ -342,36 +342,54 @@ def analyze_pdf():
 # API: análise de exame de sangue
 # ---------------------------------------------------------------------------
 BLOOD_EXTRACT_PROMPT = """Você extrai resultados de exames de sangue. Analise o \
-PDF anexado e devolva APENAS um objeto JSON válido (sem markdown) no formato:
+documento anexado (PDF ou imagem) e devolva APENAS um objeto JSON válido \
+(sem markdown) no formato:
 
 {
   "data_exame": string|null,
   "marcadores": [
     {
-      "nome": string,            // ex.: "Glicose", "Colesterol LDL", "Triglicerídeos", "TSH", "Vitamina D"
+      "nome": string,            // ex.: "Testosterona Total", "TSH", "Glicose", "HDL", "PCR Ultra Sensível", "Vitamina D"
       "valor": string,           // ex.: "112 mg/dL"
       "referencia": string|null, // faixa de referência do laudo, se houver
-      "status": "normal"|"atencao"|"alterado"|null  // sua avaliação vs. referência
+      "status": "normal"|"atencao"|"alterado"|null,  // sua avaliação vs. referência
+      "categoria": "hormonal"|"tireoide"|"metabolico"|"lipidico"|"inflamacao"|"vitaminas"|"hemograma"|"outros"
     }
   ]
 }
 
-Inclua todos os marcadores relevantes que encontrar (glicose, HbA1c, perfil \
-lipídico, função hepática e renal, tireoide, vitaminas, hemograma, etc.). \
-Responda somente com o JSON."""
+Priorize e classifique corretamente na categoria:
+- hormonal: Testosterona Total, Testosterona Livre, SHBG, Estradiol
+- tireoide: TSH, T4 Livre, T3
+- metabolico: Glicemia/Glicose, Hemoglobina Glicada (HbA1c)
+- lipidico: HDL, LDL, Triglicerídeos, Colesterol Total
+- inflamacao: PCR Ultra Sensível
+- vitaminas: Vitamina D, B12, Ferritina
+Inclua também outros marcadores relevantes que encontrar. Responda somente com o JSON."""
+
+
+_ALLOWED_MEDIA = {
+    "application/pdf": "application/pdf",
+    "image/png": "image/png",
+    "image/jpeg": "image/jpeg",
+    "image/jpg": "image/jpeg",
+    "image/webp": "image/webp",
+}
 
 
 @app.route("/api/analyze-blood", methods=["POST"])
 @require_auth
 def analyze_blood():
-    """Recebe um PDF de exame de sangue e extrai os marcadores."""
+    """Recebe um PDF ou imagem de exame de sangue e extrai os marcadores."""
     if "file" not in request.files:
-        return jsonify({"error": "Nenhum PDF enviado"}), 400
-    pdf_bytes = request.files["file"].read()
+        return jsonify({"error": "Nenhum arquivo enviado"}), 400
+    f = request.files["file"]
+    media = _ALLOWED_MEDIA.get((f.mimetype or "").lower(), "application/pdf")
+    file_bytes = f.read()
     try:
         resp = gemini().generate_content(
             [
-                {"mime_type": "application/pdf", "data": pdf_bytes},
+                {"mime_type": media, "data": file_bytes},
                 BLOOD_EXTRACT_PROMPT,
             ]
         )
@@ -564,6 +582,53 @@ def list_diets():
         item["id"] = d.id
         out.append(item)
     return jsonify(out)
+
+
+# ---------------------------------------------------------------------------
+# API: medições ao longo do tempo (peso, gordura, massa, visceral, cintura)
+# ---------------------------------------------------------------------------
+MEDICAO_CAMPOS = [
+    "peso_kg", "percentual_gordura", "massa_magra_kg",
+    "gordura_visceral", "cintura_cm", "quadril_cm",
+]
+
+
+@app.route("/api/measurements", methods=["GET"])
+@require_auth
+def list_measurements():
+    docs = (
+        db().collection("usuarios").document(g.uid).collection("medicoes")
+        .order_by("data").limit(200).stream()
+    )
+    out = []
+    for d in docs:
+        item = d.to_dict()
+        item["id"] = d.id
+        out.append(item)
+    return jsonify(out)
+
+
+@app.route("/api/measurements", methods=["POST"])
+@require_auth
+def add_measurement():
+    data = request.get_json(silent=True) or {}
+    reg = {"data": data.get("data") or datetime.date.today().isoformat()}
+    for c in MEDICAO_CAMPOS:
+        v = data.get(c)
+        if v is not None and v != "":
+            try:
+                reg[c] = float(v)
+            except (TypeError, ValueError):
+                pass
+    reg["criado_em"] = datetime.datetime.utcnow().isoformat()
+    ref = db().collection("usuarios").document(g.uid).collection("medicoes").add(reg)
+    reg["id"] = ref[1].id
+
+    # mantém o perfil com os valores mais recentes
+    perfil_update = {c: reg[c] for c in MEDICAO_CAMPOS if c in reg}
+    if perfil_update:
+        db().collection("usuarios").document(g.uid).set(perfil_update, merge=True)
+    return jsonify(reg)
 
 
 # ---------------------------------------------------------------------------

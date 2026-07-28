@@ -32,10 +32,16 @@
       <div class="serif" id="greeting" style="font-size:38px; line-height:1.05;"></div>
       <div id="subline" style="margin-top:8px; font-size:15px; color:var(--muted);"></div>
     </div>
-    <button id="btnNewDiet" class="btn btn-primary">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>
-      Gerar nova dieta
-    </button>
+    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+      <button id="btnMedicao" class="btn btn-ghost" style="height:46px; border-radius:13px;">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="display:inline-block; vertical-align:-2px; margin-right:5px;"><path d="M12 5v14M5 12h14"></path></svg>
+        Registrar medição
+      </button>
+      <button id="btnNewDiet" class="btn btn-primary">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>
+        Gerar nova dieta
+      </button>
+    </div>
   </div>
 
   <div class="grid-auto">
@@ -91,7 +97,8 @@
       <div class="seg-wrap" id="segWrap">
         <button class="seg active" data-metric="peso">Peso</button>
         <button class="seg" data-metric="gordura">Gordura</button>
-        <button class="seg" data-metric="magra">Massa magra</button>
+        <button class="seg" data-metric="magra">Massa musc.</button>
+        <button class="seg" data-metric="cintura">Cintura</button>
       </div>
     </div>
     <div id="evolChart" style="margin-top:22px;"></div>
@@ -151,10 +158,10 @@
       <div style="font-size:12.5px; font-weight:600; color:var(--muted); margin:18px 0 8px;">Exame de sangue (opcional)</div>
       <label class="dropzone" for="bloodInput">
         <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#C0392B" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="margin:0 auto;"><path d="M12 2s5 5.5 5 10a5 5 0 0 1-10 0c0-4.5 5-10 5-10z"></path></svg>
-        <div class="t1" id="bloodTitle">Solte o PDF do exame de sangue</div>
+        <div class="t1" id="bloodTitle">Solte o PDF ou imagem do exame</div>
         <div class="t2">a IA lê os marcadores e monta sua análise</div>
       </label>
-      <input id="bloodInput" type="file" accept="application/pdf" style="display:none;" />
+      <input id="bloodInput" type="file" accept="application/pdf,image/*" style="display:none;" />
       <div id="bloodMsg" class="msg"></div>
 
       <div class="note-soft" style="margin-top:16px;">
@@ -178,10 +185,14 @@
           <div class="field-unit"><input id="peso_kg" class="field num" type="number" step="0.1" placeholder="88,1" style="padding-right:48px;" /><span class="u">kg</span></div></label>
         <label><span class="flabel">Gordura corporal</span>
           <div class="field-unit"><input id="percentual_gordura" class="field num" type="number" step="0.1" placeholder="24,1" style="padding-right:48px;" /><span class="u">%</span></div></label>
-        <label><span class="flabel">Massa magra</span>
+        <label><span class="flabel">Massa muscular</span>
           <div class="field-unit"><input id="massa_magra_kg" class="field num" type="number" step="0.1" placeholder="66,8" style="padding-right:48px;" /><span class="u">kg</span></div></label>
+        <label><span class="flabel">Gordura visceral</span>
+          <div class="field-unit"><input id="gordura_visceral" class="field num" type="number" step="0.1" placeholder="10" style="padding-right:48px;" /><span class="u">nível</span></div></label>
         <label><span class="flabel">Taxa metabólica basal</span>
           <div class="field-unit"><input id="taxa_metabolica_basal_kcal" class="field num" type="number" placeholder="1780" style="padding-right:56px;" /><span class="u">kcal</span></div></label>
+        <label><span class="flabel">Cintura</span>
+          <div class="field-unit"><input id="cintura_cm" class="field num" type="number" step="0.1" placeholder="88" style="padding-right:48px;" /><span class="u">cm</span></div></label>
       </div>
     </div>
 
@@ -267,6 +278,46 @@
   <div id="analiseBody" style="margin-top:14px;"></div>
 </section>
 
+<!-- ===================== MEDIÇÃO ===================== -->
+<section id="view-medicao" class="wrap-narrow hidden">
+  <div style="display:flex; align-items:center; gap:10px;">
+    <button id="btnBackMedicao" class="btn btn-ghost" style="padding:0 13px 0 10px;">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:-2px; margin-right:4px;"><path d="M15 6l-6 6 6 6"></path></svg>
+      Voltar
+    </button>
+  </div>
+  <div style="margin-top:22px;">
+    <div class="serif" style="font-size:34px; line-height:1.1;">Registrar medição</div>
+    <div style="margin-top:8px; font-size:15px; color:var(--muted); line-height:1.55;">Anote seus números de hoje. Cada registro entra nos gráficos de evolução.</div>
+  </div>
+  <div class="card" style="margin-top:22px;">
+    <div class="form-grid">
+      <label class="col-span"><span class="flabel">Data</span>
+        <input id="med_data" class="field" type="date" /></label>
+      <label><span class="flabel">Peso</span>
+        <div class="field-unit"><input id="med_peso_kg" class="field num" type="number" step="0.1" placeholder="88,1" style="padding-right:48px;" /><span class="u">kg</span></div></label>
+      <label><span class="flabel">Gordura corporal</span>
+        <div class="field-unit"><input id="med_percentual_gordura" class="field num" type="number" step="0.1" placeholder="24,1" style="padding-right:48px;" /><span class="u">%</span></div></label>
+      <label><span class="flabel">Massa muscular</span>
+        <div class="field-unit"><input id="med_massa_magra_kg" class="field num" type="number" step="0.1" placeholder="66,8" style="padding-right:48px;" /><span class="u">kg</span></div></label>
+      <label><span class="flabel">Gordura visceral</span>
+        <div class="field-unit"><input id="med_gordura_visceral" class="field num" type="number" step="0.1" placeholder="10" style="padding-right:48px;" /><span class="u">nível</span></div></label>
+      <label><span class="flabel">Cintura</span>
+        <div class="field-unit"><input id="med_cintura_cm" class="field num" type="number" step="0.1" placeholder="88" style="padding-right:48px;" /><span class="u">cm</span></div></label>
+      <label><span class="flabel">Quadril</span>
+        <div class="field-unit"><input id="med_quadril_cm" class="field num" type="number" step="0.1" placeholder="100" style="padding-right:48px;" /><span class="u">cm</span></div></label>
+    </div>
+    <div style="height:16px;"></div>
+    <button id="btnSaveMedicao" class="btn btn-primary" style="width:100%; height:50px; justify-content:center;">Salvar medição</button>
+    <div id="medMsg" class="msg"></div>
+  </div>
+
+  <div class="card" style="margin-top:14px;">
+    <div class="card-title" style="font-size:20px;">Últimas medições</div>
+    <div id="medList" style="margin-top:12px;"></div>
+  </div>
+</section>
+
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
   import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
@@ -277,10 +328,10 @@
   const $ = (id) => document.getElementById(id);
 
   const PROFILE_FIELDS = ["nome","sexo","idade","altura_cm","peso_kg",
-    "percentual_gordura","massa_magra_kg","taxa_metabolica_basal_kcal"];
+    "percentual_gordura","massa_magra_kg","gordura_visceral","taxa_metabolica_basal_kcal","cintura_cm"];
   const EXTRA_FIELDS = ["objetivo","rotina_treino","rotina_alimentar","restricoes","telegram_chat_id"];
 
-  let token = null, profile = {}, diets = [];
+  let token = null, profile = {}, diets = [], medicoes = [];
   let step = 1, metric = "peso", selectedPrazo = "mensal", bloodData = null;
 
   onAuthStateChanged(auth, async (user) => {
@@ -309,11 +360,12 @@
   async function loadAll() {
     try { profile = await api("/api/profile"); } catch (e) { profile = {}; }
     try { diets = await api("/api/diets"); } catch (e) { diets = []; }
+    try { medicoes = await api("/api/measurements"); } catch (e) { medicoes = []; }
   }
 
   // ---------- navegação ----------
   function showView(name) {
-    ["home","form","dieta","analise"].forEach((v) => $("view-" + v).classList.toggle("hidden", v !== name));
+    ["home","form","dieta","analise","medicao"].forEach((v) => $("view-" + v).classList.toggle("hidden", v !== name));
     if (name === "home") renderHome();
     window.scrollTo(0, 0);
   }
@@ -323,6 +375,8 @@
   $("btnBackAnalise").onclick = () => showView("home");
   $("btnAnalise").onclick = () => openAnalise();
   $("btnRunAnalise").onclick = () => runAnalise();
+  $("btnMedicao").onclick = () => openMedicao();
+  $("btnBackMedicao").onclick = () => showView("home");
 
   // ---------- datas / séries ----------
   function fmtDate(iso) {
@@ -336,13 +390,27 @@
     const saud = h < 12 ? "Bom dia" : h < 18 ? "Boa tarde" : "Boa noite";
     return saud + ", " + nome + ".";
   }
-  // série cronológica (mais antiga -> mais nova) a partir das dietas salvas
+  // série cronológica combinando medições próprias + snapshots das dietas
   function seriesFor(metricKey) {
-    const key = { peso: "peso_kg", gordura: "percentual_gordura", magra: "massa_magra_kg" }[metricKey];
-    const arr = diets.slice().reverse()
-      .map((d) => ({ v: (d.perfil || {})[key], iso: d.criado_em }))
-      .filter((p) => typeof p.v === "number");
-    return arr;
+    const key = { peso: "peso_kg", gordura: "percentual_gordura", magra: "massa_magra_kg", cintura: "cintura_cm" }[metricKey];
+    const byDay = {};
+    // dietas (fonte secundária)
+    diets.forEach((d) => {
+      const v = (d.perfil || {})[key];
+      if (typeof v === "number") {
+        const day = (d.criado_em || "").slice(0, 10);
+        byDay[day] = { v, iso: d.criado_em };
+      }
+    });
+    // medições (fonte primária, sobrescreve o dia)
+    medicoes.forEach((m) => {
+      const v = m[key];
+      if (typeof v === "number") {
+        const day = (m.data || m.criado_em || "").slice(0, 10);
+        byDay[day] = { v, iso: m.data || m.criado_em };
+      }
+    });
+    return Object.keys(byDay).sort().map((k) => byDay[k]);
   }
   const MESES = ["jan","fev","mar","abr","mai","jun","jul","ago","set","out","nov","dez"];
 
@@ -433,8 +501,10 @@
       rows.push({ lab: "Gordura corporal", val: br(profile.percentual_gordura) + "%", w: Math.min(95, profile.percentual_gordura), color: "#C08A3E" });
     if (profile.massa_magra_kg != null) {
       const w = profile.peso_kg ? (profile.massa_magra_kg / profile.peso_kg) * 100 : 70;
-      rows.push({ lab: "Massa magra", val: br(profile.massa_magra_kg) + " kg", w: Math.min(95, w), color: "#14735A" });
+      rows.push({ lab: "Massa muscular", val: br(profile.massa_magra_kg) + " kg", w: Math.min(95, w), color: "#14735A" });
     }
+    if (profile.gordura_visceral != null)
+      rows.push({ lab: "Gordura visceral", val: "nível " + br(profile.gordura_visceral), w: Math.min(95, profile.gordura_visceral * 7), color: profile.gordura_visceral >= 10 ? "#C0392B" : "#C08A3E" });
     if (profile.taxa_metabolica_basal_kcal != null)
       rows.push({ lab: "Taxa metabólica", val: br(profile.taxa_metabolica_basal_kcal) + " kcal", w: Math.min(95, Math.max(20, (profile.taxa_metabolica_basal_kcal - 1000) / 15)), color: "#3E6B8C" });
 
@@ -498,9 +568,10 @@
     $("evolSub").textContent = serie.length
       ? `${serie.length} medição(ões) · das suas dietas`
       : "sem dados suficientes ainda";
+    const NOMES = { peso: "peso", gordura: "gordura", magra: "massa muscular", cintura: "cintura" };
     const suf = metric === "gordura" ? "%" : "";
     if (serie.length < 2) {
-      $("evolChart").innerHTML = `<div class="empty" style="padding:30px 0; text-align:center;">Gere pelo menos duas dietas para ver a evolução de ${metric === "peso" ? "peso" : metric === "gordura" ? "gordura" : "massa magra"}.</div>`;
+      $("evolChart").innerHTML = `<div class="empty" style="padding:30px 0; text-align:center;">Registre pelo menos duas medições de ${NOMES[metric]} para ver a evolução.</div>`;
       return;
     }
     const vals = serie.map((p) => p.v);
@@ -701,7 +772,7 @@
     if (profile.analise && (profile.analise.destaques || profile.analise.resumo)) {
       renderAnalise(profile.analise);
     } else {
-      $("analiseBody").innerHTML = `<div class="card"><div class="empty">Nenhuma análise ainda. Clique em “Atualizar análise” para a IA interpretar seus exames (bioimpedância e/ou sangue).</div></div>`;
+      $("analiseBody").innerHTML = `<div class="card"><div class="empty">Nenhuma análise ainda. Clique em “Atualizar análise” para a IA interpretar seus exames (bioimpedância e/ou sangue).</div></div>` + bloodMarkersHtml();
     }
     showView("analise");
   }
@@ -742,9 +813,75 @@
       a.recomendacoes_dieta.forEach((r) => { html += `<li>${esc(r)}</li>`; });
       html += `</ul></div>`;
     }
+    html += bloodMarkersHtml();
     html += `<div class="disclaimer" style="margin-top:14px;">${esc(a.aviso || "Interpretação gerada por IA — leve seus exames a um médico ou nutricionista.")}</div>`;
     $("analiseBody").innerHTML = html;
   }
+
+  function bloodMarkersHtml() {
+    const ex = profile.exames_sangue;
+    const marc = ex && ex.marcadores;
+    if (!marc || !marc.length) return "";
+    const CATS = { hormonal: "Hormonal", tireoide: "Tireoide", metabolico: "Metabólico", lipidico: "Lipídico", inflamacao: "Inflamação", vitaminas: "Vitaminas", hemograma: "Hemograma", outros: "Outros" };
+    const grupos = {};
+    marc.forEach((m) => { const c = CATS[m.categoria] ? m.categoria : "outros"; (grupos[c] = grupos[c] || []).push(m); });
+    const stCls = { normal: "bom", atencao: "atencao", alterado: "alerta" };
+    let html = `<div class="card" style="margin-top:12px;"><div class="card-title" style="font-size:20px;">Exame de sangue</div>
+      <div style="font-size:12px; color:var(--muted3); margin-top:2px;">${ex.data_exame ? "Coletado em " + esc(ex.data_exame) : "Marcadores extraídos"}</div>`;
+    Object.keys(CATS).filter((c) => grupos[c]).forEach((c) => {
+      html += `<div class="sub-group"><div class="gt">${CATS[c]}</div><div style="display:grid; gap:6px;">`;
+      grupos[c].forEach((m) => {
+        const st = stCls[m.status] || "";
+        html += `<div style="display:flex; align-items:center; gap:10px; font-size:13.5px;">
+          ${st ? `<span class="an-dot d-${st}"></span>` : `<span class="an-dot" style="background:#ccc;"></span>`}
+          <span style="flex:1; min-width:0;">${esc(m.nome || "")}</span>
+          <span class="mono" style="font-size:12.5px; color:#3C4340;">${esc(m.valor || "")}</span></div>`;
+      });
+      html += `</div></div>`;
+    });
+    html += `</div>`;
+    return html;
+  }
+
+  // ---------- MEDIÇÃO ----------
+  function openMedicao() {
+    $("med_data").value = new Date().toISOString().slice(0, 10);
+    ["peso_kg","percentual_gordura","massa_magra_kg","gordura_visceral","cintura_cm","quadril_cm"]
+      .forEach((k) => { $("med_" + k).value = ""; });
+    setMsg($("medMsg"), "", "");
+    renderMedList();
+    showView("medicao");
+  }
+  function renderMedList() {
+    if (!medicoes.length) { $("medList").innerHTML = `<div class="empty">Nenhuma medição registrada ainda.</div>`; return; }
+    const rows = medicoes.slice().reverse().slice(0, 8);
+    $("medList").innerHTML = rows.map((m) => {
+      const parts = [];
+      if (m.peso_kg != null) parts.push(br(m.peso_kg) + " kg");
+      if (m.percentual_gordura != null) parts.push(br(m.percentual_gordura) + "% gord.");
+      if (m.cintura_cm != null) parts.push(br(m.cintura_cm) + " cm cint.");
+      return `<div class="meal-row"><span class="time" style="width:auto;">${esc((m.data || "").split("-").reverse().join("/"))}</span>
+        <span class="nm mono" style="font-weight:400;">${esc(parts.join(" · "))}</span></div>`;
+    }).join("");
+  }
+  $("btnSaveMedicao").onclick = async () => {
+    const body = { data: $("med_data").value };
+    let algum = false;
+    ["peso_kg","percentual_gordura","massa_magra_kg","gordura_visceral","cintura_cm","quadril_cm"].forEach((k) => {
+      const v = $("med_" + k).value.trim();
+      if (v !== "") { body[k] = Number(v); algum = true; }
+    });
+    if (!algum) { setMsg($("medMsg"), "Preencha ao menos um valor.", "err"); return; }
+    loading($("medMsg"), "Salvando...");
+    $("btnSaveMedicao").disabled = true;
+    try {
+      await api("/api/measurements", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      await loadAll();
+      setMsg($("medMsg"), "Medição salva! Já entrou nos gráficos.", "ok");
+      renderMedList();
+    } catch (e) { setMsg($("medMsg"), e.message, "err"); }
+    finally { $("btnSaveMedicao").disabled = false; }
+  };
 
   // ---------- upload exame de sangue ----------
   $("bloodInput").onchange = async () => {
