@@ -1038,7 +1038,10 @@ def admin_user_detail(uid):
               .order_by("criado_em", direction=firestore.Query.DESCENDING).limit(20).stream()]
     medicoes = [dict(m.to_dict(), id=m.id) for m in base.collection("medicoes")
                 .order_by("data").limit(200).stream()]
-    return jsonify({"uid": uid, "perfil": perfil, "dietas": dietas, "medicoes": medicoes})
+    consumo = [dict(c.to_dict(), id=c.id) for c in base.collection("consumo")
+               .order_by("data", direction=firestore.Query.DESCENDING).limit(30).stream()]
+    return jsonify({"uid": uid, "perfil": perfil, "dietas": dietas,
+                    "medicoes": medicoes, "consumo": consumo})
 
 
 # ---------------------------------------------------------------------------

@@ -538,6 +538,37 @@
           <p style="font-size:13.5px; color:var(--muted); line-height:1.55; margin:8px 0 0;">${esc(p.analise.resumo)}</p></div>`;
       }
 
+      // aderência a partir do consumo registrado
+      const consumo = r.consumo || [];
+      let totalRef = 0, cumpridas = 0, subs = 0, pulos = 0;
+      consumo.forEach((c) => {
+        Object.values(c.refeicoes || {}).forEach((e) => {
+          totalRef++;
+          if (e.status === "cumpriu") cumpridas++;
+          else if (e.status === "substituiu") subs++;
+          else if (e.status === "pulou") pulos++;
+        });
+      });
+      const aderPct = totalRef ? Math.round((cumpridas / totalRef) * 100) : 0;
+      html += `<div class="card" style="margin-top:12px;"><div class="card-title" style="font-size:18px;">Aderência</div>`;
+      if (!consumo.length) {
+        html += `<div class="empty" style="margin-top:8px;">Sem registros de consumo ainda.</div>`;
+      } else {
+        html += `<div class="totals" style="margin-top:12px;">
+          <div class="box"><b>${consumo.length}</b><small>dias c/ registro</small></div>
+          <div class="box"><b>${aderPct}%</b><small>refeições cumpridas</small></div>
+          <div class="box"><b>${cumpridas}</b><small>cumpridas</small></div>
+          <div class="box"><b>${subs}</b><small>substituídas</small></div>
+          <div class="box"><b>${pulos}</b><small>puladas</small></div>
+        </div>
+        <div style="margin-top:10px; display:grid; gap:4px;">` +
+          consumo.slice(0, 10).map((c) => {
+            const n = Object.keys(c.refeicoes || {}).length;
+            return `<div class="meal-row" style="padding:7px 4px;"><span class="time" style="width:auto;">${esc((c.data || "").split("-").reverse().join("/"))}</span><span class="nm" style="font-weight:400;">${n} refeição(ões)</span><span class="kc">${c.total_kcal || 0}${c.alvo_kcal ? " / " + c.alvo_kcal : ""} kcal</span></div>`;
+          }).join("") + `</div>`;
+      }
+      html += `</div>`;
+
       const dietas = r.dietas || [];
       html += `<div class="card" style="margin-top:12px;"><div class="card-title" style="font-size:18px;">Dietas (${dietas.length})</div>
         <div style="margin-top:8px; display:grid; gap:4px;">` +
