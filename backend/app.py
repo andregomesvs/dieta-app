@@ -50,6 +50,9 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-flash-latest")
 CRED_PATH = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "./firebase-service-account.json")
 FIREBASE_PROJECT_ID = os.environ.get("FIREBASE_PROJECT_ID", "")
+# E-mails com acesso administrativo (somente leitura). Separados por vírgula.
+ADMIN_EMAILS = {e.strip().lower() for e in os.environ.get(
+    "ADMIN_EMAILS", "andregomes.vs@gmail.com").split(",") if e.strip()}
 
 # Telegram + agendamento de lembretes
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
@@ -262,6 +265,29 @@ def require_auth(f):
             g.email = decoded.get("email")
         except Exception as e:  # noqa: BLE001
             return jsonify({"error": f"Token inválido: {e}"}), 401
+        return f(*args, **kwargs)
+
+    return wrapper
+
+
+def require_admin(f):
+    """Como require_auth, mas exige e-mail na lista ADMIN_EMAILS."""
+
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        header = request.headers.get("Authorization", "")
+        if not header.startswith("Bearer "):
+            return jsonify({"error": "Token ausente"}), 401
+        if not firebase_admin._apps:
+            init_firebase()
+        try:
+            decoded = fb_auth.verify_id_token(header.split(" ", 1)[1])
+            g.uid = decoded["uid"]
+            g.email = decoded.get("email")
+        except Exception as e:  # noqa: BLE001
+            return jsonify({"error": f"Token inválido: {e}"}), 401
+        if (g.email or "").lower() not in ADMIN_EMAILS:
+            return jsonify({"error": "Acesso restrito"}), 403
         return f(*args, **kwargs)
 
     return wrapper
@@ -968,6 +994,51 @@ def consumo_today():
     d = (db().collection("usuarios").document(g.uid)
          .collection("consumo").document(dia).get().to_dict()) or {}
     return jsonify(d)
+
+
+# ---------------------------------------------------------------------------
+# Identidade e Admin (somente leitura)
+# ---------------------------------------------------------------------------
+@app.route("/api/me", methods=["GET"])
+@require_auth
+def me():
+    return jsonify({"email": g.email, "is_admin": (g.email or "").lower() in ADMIN_EMAILS})
+
+
+@app.route("/api/admin/users", methods=["GET"])
+@require_admin
+def admin_users():
+    out = []
+    for doc in db().collection("usuarios").stream():
+        p = doc.to_dict() or {}
+        out.append({
+            "uid": doc.id,
+            "email": p.get("email"),
+            "nome": p.get("nome"),
+            "sexo": p.get("sexo"),
+            "idade": p.get("idade"),
+            "peso_kg": p.get("peso_kg"),
+            "percentual_gordura": p.get("percentual_gordura"),
+            "objetivo": p.get("objetivo"),
+            "meta": p.get("meta"),
+            "telegram": bool(p.get("telegram_chat_id")),
+            "tem_analise": bool(p.get("analise")),
+            "atualizado_em": p.get("atualizado_em"),
+        })
+    out.sort(key=lambda x: x.get("atualizado_em") or "", reverse=True)
+    return jsonify(out)
+
+
+@app.route("/api/admin/users/<uid>", methods=["GET"])
+@require_admin
+def admin_user_detail(uid):
+    base = db().collection("usuarios").document(uid)
+    perfil = base.get().to_dict() or {}
+    dietas = [dict(d.to_dict(), id=d.id) for d in base.collection("dietas")
+              .order_by("criado_em", direction=firestore.Query.DESCENDING).limit(20).stream()]
+    medicoes = [dict(m.to_dict(), id=m.id) for m in base.collection("medicoes")
+                .order_by("data").limit(200).stream()]
+    return jsonify({"uid": uid, "perfil": perfil, "dietas": dietas, "medicoes": medicoes})
 
 
 # ---------------------------------------------------------------------------

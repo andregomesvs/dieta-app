@@ -23,6 +23,7 @@
         <span class="email" id="userEmail"></span>
         <span class="avatar" id="userAvatar"></span>
       </div>
+      <button id="btnAdmin" class="btn btn-ghost hidden">Admin</button>
       <button id="btnLogout" class="btn btn-ghost">Sair</button>
     </div>
   </header>
@@ -382,6 +383,25 @@
   </div>
 </section>
 
+<!-- ===================== ADMIN (somente leitura) ===================== -->
+<section id="view-admin" class="wrap hidden">
+  <div style="display:flex; align-items:center; gap:10px;">
+    <button id="btnBackAdmin" class="btn btn-ghost" style="padding:0 13px 0 10px;">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:-2px; margin-right:4px;"><path d="M15 6l-6 6 6 6"></path></svg>
+      Voltar
+    </button>
+    <div style="flex:1;"></div>
+    <span class="badge" style="background:rgba(20,115,90,.09); color:var(--green); border-color:transparent;">Somente leitura</span>
+  </div>
+  <div style="margin-top:22px;">
+    <div class="serif" style="font-size:34px; line-height:1.1;">Admin</div>
+    <div id="adminSub" style="margin-top:8px; font-size:15px; color:var(--muted);">Usuários cadastrados no app.</div>
+  </div>
+  <div id="adminMsg" class="msg"></div>
+  <div id="adminList" style="margin-top:14px; display:grid; gap:8px;"></div>
+  <div id="adminDetail" style="margin-top:14px;"></div>
+</section>
+
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
   import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
@@ -396,7 +416,7 @@
   const EXTRA_FIELDS = ["objetivo","rotina_treino","rotina_alimentar","restricoes"];
 
   let token = null, profile = {}, diets = [], medicoes = [], consumoHoje = {};
-  let step = 1, metric = "peso", selectedPrazo = "mensal", bloodData = null;
+  let step = 1, metric = "peso", selectedPrazo = "mensal", bloodData = null, isAdmin = false;
 
   onAuthStateChanged(auth, async (user) => {
     if (!user) { window.location.href = "/"; return; }
@@ -404,6 +424,8 @@
     $("userAvatar").textContent = (user.email || "?").slice(0, 2).toUpperCase();
     token = await user.getIdToken();
     await loadAll();
+    try { const meRes = await api("/api/me"); isAdmin = !!meRes.is_admin; } catch (_) { isAdmin = false; }
+    $("btnAdmin").classList.toggle("hidden", !isAdmin);
     showView("home");
   });
 
@@ -440,7 +462,7 @@
 
   // ---------- navegação ----------
   function showView(name) {
-    ["home","form","dieta","analise","medicao","meta"].forEach((v) => $("view-" + v).classList.toggle("hidden", v !== name));
+    ["home","form","dieta","analise","medicao","meta","admin"].forEach((v) => $("view-" + v).classList.toggle("hidden", v !== name));
     if (name === "home") renderHome();
     window.scrollTo(0, 0);
   }
@@ -454,6 +476,92 @@
   $("btnBackMedicao").onclick = () => showView("home");
   $("btnSetMeta").onclick = () => openMeta();
   $("btnBackMeta").onclick = () => showView("home");
+  $("btnAdmin").onclick = () => openAdmin();
+  $("btnBackAdmin").onclick = () => showView("home");
+
+  // ---------- ADMIN (somente leitura) ----------
+  async function openAdmin() {
+    $("adminDetail").innerHTML = "";
+    $("adminList").innerHTML = "";
+    loading($("adminMsg"), "Carregando usuários...");
+    showView("admin");
+    try {
+      const users = await api("/api/admin/users");
+      setMsg($("adminMsg"), "", "");
+      $("adminSub").textContent = `${users.length} usuário(s) cadastrado(s).`;
+      $("adminList").innerHTML = users.map((u) => `
+        <div class="hist-card" data-uid="${u.uid}">
+          <div style="min-width:0; flex:1;">
+            <div class="t">${esc(u.nome || "(sem nome)")} <span style="color:var(--muted3); font-weight:400;">· ${esc(u.email || "")}</span></div>
+            <div class="d">${u.peso_kg != null ? br(u.peso_kg) + " kg · " : ""}${esc(u.objetivo || "sem objetivo")}</div>
+          </div>
+          ${u.telegram ? '<span class="badge">TG</span>' : ""}
+          ${u.tem_analise ? '<span class="badge">exames</span>' : ""}
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#B4B9B3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"></path></svg>
+        </div>`).join("") || `<div class="empty">Nenhum usuário ainda.</div>`;
+      $("adminList").querySelectorAll(".hist-card").forEach((el) =>
+        el.onclick = () => openAdminUser(el.getAttribute("data-uid")));
+    } catch (e) { setMsg($("adminMsg"), e.message, "err"); }
+  }
+
+  async function openAdminUser(uid) {
+    loading($("adminMsg"), "Carregando dados...");
+    try {
+      const r = await api("/api/admin/users/" + uid);
+      setMsg($("adminMsg"), "", "");
+      const p = r.perfil || {};
+      const linha = (rot, val) => `<div class="profile-line"><span>${rot}</span><b>${val != null && val !== "" ? esc(String(val)) : "—"}</b></div>`;
+      let html = `<div class="card">
+        <div class="row" style="justify-content:space-between;">
+          <div class="card-title" style="font-size:22px;">${esc(p.nome || "(sem nome)")}</div>
+          <button id="btnAdminBackList" class="btn btn-ghost" style="height:32px;">← lista</button>
+        </div>
+        <div style="font-size:12.5px; color:var(--muted3); margin:2px 0 12px;">${esc(p.email || "")}</div>
+        ${linha("Sexo", p.sexo)}${linha("Idade", p.idade)}${linha("Altura (cm)", p.altura_cm)}
+        ${linha("Peso (kg)", p.peso_kg)}${linha("% Gordura", p.percentual_gordura)}
+        ${linha("Massa muscular (kg)", p.massa_magra_kg)}${linha("Gordura visceral", p.gordura_visceral)}
+        ${linha("TMB (kcal)", p.taxa_metabolica_basal_kcal)}${linha("Cintura (cm)", p.cintura_cm)}
+        ${linha("Objetivo", p.objetivo)}
+        ${p.meta ? linha("Meta", `${br(p.meta.peso_meta)} kg em ${p.meta.prazo_semanas || "?"} sem`) : ""}
+        ${linha("Telegram", p.telegram_chat_id ? "conectado" : "não")}
+      </div>`;
+
+      const marc = (p.exames_sangue || {}).marcadores || [];
+      if (marc.length) {
+        html += `<div class="card" style="margin-top:12px;"><div class="card-title" style="font-size:18px;">Exame de sangue (${marc.length})</div>
+          <div style="margin-top:8px; display:grid; gap:4px;">` +
+          marc.slice(0, 30).map((m) => `<div style="display:flex; justify-content:space-between; font-size:13px;"><span>${esc(m.nome || "")}</span><span class="mono" style="color:#3C4340;">${esc(m.valor || "")}</span></div>`).join("") +
+          `</div></div>`;
+      }
+      if (p.analise && p.analise.resumo) {
+        html += `<div class="card" style="margin-top:12px;"><div class="card-title" style="font-size:18px;">Análise</div>
+          <p style="font-size:13.5px; color:var(--muted); line-height:1.55; margin:8px 0 0;">${esc(p.analise.resumo)}</p></div>`;
+      }
+
+      const dietas = r.dietas || [];
+      html += `<div class="card" style="margin-top:12px;"><div class="card-title" style="font-size:18px;">Dietas (${dietas.length})</div>
+        <div style="margin-top:8px; display:grid; gap:4px;">` +
+        (dietas.length ? dietas.map((d) => `<div class="meal-row" style="padding:8px 4px;"><span class="time" style="width:auto;">${esc(fmtDate(d.criado_em))}</span><span class="nm" style="font-weight:400;">${esc(d.objetivo || "")}</span><span class="kc">${(d.dieta || {}).calorias_alvo_dia ? (d.dieta || {}).calorias_alvo_dia + " kcal" : ""}</span></div>`).join("") : `<div class="empty">Nenhuma.</div>`) +
+        `</div></div>`;
+
+      const meds = r.medicoes || [];
+      html += `<div class="card" style="margin-top:12px;"><div class="card-title" style="font-size:18px;">Medições (${meds.length})</div>
+        <div style="margin-top:8px; display:grid; gap:4px;">` +
+        (meds.length ? meds.slice().reverse().slice(0, 15).map((m) => {
+          const parts = [];
+          if (m.peso_kg != null) parts.push(br(m.peso_kg) + " kg");
+          if (m.percentual_gordura != null) parts.push(br(m.percentual_gordura) + "% g");
+          if (m.cintura_cm != null) parts.push(br(m.cintura_cm) + " cm");
+          return `<div class="meal-row" style="padding:8px 4px;"><span class="time" style="width:auto;">${esc((m.data || "").split("-").reverse().join("/"))}</span><span class="nm mono" style="font-weight:400;">${esc(parts.join(" · "))}</span></div>`;
+        }).join("") : `<div class="empty">Nenhuma.</div>`) +
+        `</div></div>`;
+
+      $("adminDetail").innerHTML = html;
+      $("adminList").innerHTML = "";
+      $("btnAdminBackList").onclick = () => openAdmin();
+      window.scrollTo(0, 0);
+    } catch (e) { setMsg($("adminMsg"), e.message, "err"); }
+  }
 
   // ---------- datas / séries ----------
   function fmtDate(iso) {
