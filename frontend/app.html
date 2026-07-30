@@ -896,29 +896,34 @@
 
   function renderChart() {
     const serie = seriesFor(metric);
-    $("evolSub").textContent = serie.length
-      ? `${serie.length} medição(ões) · das suas dietas`
-      : "sem dados suficientes ainda";
+    $("evolSub").textContent = medicoes.length
+      ? `${medicoes.length} medição(ões) registrada(s)`
+      : "sem medições ainda";
     const NOMES = { peso: "peso", gordura: "gordura", magra: "massa muscular", cintura: "cintura" };
-    const suf = metric === "gordura" ? "%" : "";
-    if (serie.length < 2) {
-      $("evolChart").innerHTML = `<div class="empty" style="padding:30px 0; text-align:center;">Registre pelo menos duas medições de ${NOMES[metric]} para ver a evolução.</div>`;
+    const suf = metric === "gordura" ? "%" : (metric === "cintura" ? " cm" : (metric === "peso" || metric === "magra" ? " kg" : ""));
+    if (serie.length === 0) {
+      $("evolChart").innerHTML = `<div class="empty" style="padding:30px 0; text-align:center;">Nenhuma medição com ${NOMES[metric]} ainda. Registre uma medição que inclua ${NOMES[metric]}.</div>`;
       return;
     }
     const vals = serie.map((p) => p.v);
     const min = Math.min(...vals), max = Math.max(...vals);
     const pad = (max - min) * 0.4 || 1, lo = min - pad, hi = max + pad;
     const n = vals.length;
-    const X = (i) => 24 + i * (572 / (n - 1));
+    const X = (i) => n === 1 ? 310 : 24 + i * (572 / (n - 1));
     const Y = (v) => 196 - ((v - lo) / (hi - lo)) * 166;
     const pts = serie.map((p, i) => {
       const label = p.iso.length >= 10 ? p.iso.slice(8, 10) + "/" + p.iso.slice(5, 7) : p.iso;
       return { x: X(i).toFixed(1), y: Y(p.v).toFixed(1), label, value: br(p.v) + suf };
     });
-    const line = pts.map((p, i) => (i ? "L" : "M") + p.x + " " + p.y).join(" ");
-    const area = line + " L" + X(n - 1).toFixed(1) + " 208 L24 208 Z";
-    const circles = pts.map((p) => `<circle cx="${p.x}" cy="${p.y}" r="3.6" fill="#fff" stroke="#14735A" stroke-width="2" vector-effect="non-scaling-stroke"></circle>`).join("");
-    const labels = pts.map((p) => `<div style="text-align:center; flex:1;"><div class="mono" style="font-size:12.5px; color:#3C4340;">${p.value}</div><div style="margin-top:3px; font-size:11px; color:var(--muted4);">${p.label}</div></div>`).join("");
+    const line = n >= 2 ? pts.map((p, i) => (i ? "L" : "M") + p.x + " " + p.y).join(" ") : "";
+    const area = n >= 2 ? line + " L" + X(n - 1).toFixed(1) + " 208 L24 208 Z" : "";
+    const circles = pts.map((p) => `<circle cx="${p.x}" cy="${p.y}" r="4" fill="#fff" stroke="#14735A" stroke-width="2" vector-effect="non-scaling-stroke"></circle>`).join("");
+    const labels = n === 1
+      ? `<div style="text-align:center; flex:1;"><div class="mono" style="font-size:14px; color:#3C4340;">${pts[0].value}</div><div style="margin-top:3px; font-size:11px; color:var(--muted4);">${pts[0].label}</div></div>`
+      : pts.map((p) => `<div style="text-align:center; flex:1;"><div class="mono" style="font-size:12.5px; color:#3C4340;">${p.value}</div><div style="margin-top:3px; font-size:11px; color:var(--muted4);">${p.label}</div></div>`).join("");
+    const nota = n === 1
+      ? `<div class="empty" style="text-align:center; margin-top:8px; font-size:12.5px;">Só há 1 medição com ${NOMES[metric]}. Registre outra que também tenha ${NOMES[metric]} para ver a tendência.</div>`
+      : "";
     $("evolChart").innerHTML = `
       <svg viewBox="0 0 620 220" preserveAspectRatio="none" style="width:100%; height:200px;">
         <defs><linearGradient id="v2Fill" x1="0" y1="0" x2="0" y2="1">
@@ -932,7 +937,7 @@
         <path d="${line}" fill="none" stroke="#14735A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"></path>
         ${circles}
       </svg>
-      <div style="display:flex; justify-content:space-between; margin-top:10px;">${labels}</div>`;
+      <div style="display:flex; justify-content:space-between; margin-top:10px;">${labels}</div>${nota}`;
   }
 
   // ---------- última dieta + histórico ----------
