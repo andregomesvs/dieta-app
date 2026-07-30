@@ -685,41 +685,119 @@
   }
 
   function renderHoje() {
-    const refs = consumoHoje.refeicoes || {};
-    const entradas = Object.values(refs);
-    const alvo = consumoHoje.alvo_kcal || (diets[0] && (diets[0].dieta || {}).calorias_alvo_dia) || null;
+    const refsMap = consumoHoje.refeicoes || {};
+    const dieta = (diets[0] && diets[0].dieta) || {};
+    const planned = dieta.refeicoes || [];
+    const alvo = consumoHoje.alvo_kcal || dieta.calorias_alvo_dia || null;
     const total = consumoHoje.total_kcal || 0;
-    // denominador = total de refeições planejadas na dieta do dia
-    const previstas = ((diets[0] && (diets[0].dieta || {}).refeicoes) || []).length;
 
-    if (!entradas.length) {
-      $("hojeAderencia").textContent = previstas ? `0/${previstas} cumpridas` : "";
-      $("hojeBody").innerHTML = `<div class="empty">Nada registrado hoje ainda. Responda os lembretes no Telegram (Cumpri / Outra coisa / Pulei) que aparece aqui.</div>`;
+    if (!planned.length) {
+      $("hojeAderencia").textContent = "";
+      $("hojeBody").innerHTML = `<div class="empty">Gere uma dieta para acompanhar e registrar as refeições de hoje aqui.</div>`;
       return;
     }
-    const cumpridas = entradas.filter((e) => e.status === "cumpriu").length;
-    const denom = previstas || entradas.length;
-    $("hojeAderencia").textContent = `${cumpridas}/${denom} cumpridas`;
+    const cumpridas = planned.filter((r, i) => (refsMap[i] || {}).status === "cumpriu").length;
+    $("hojeAderencia").textContent = `${cumpridas}/${planned.length} cumpridas`;
 
-    const pct = alvo ? Math.min(100, (total / alvo) * 100) : 0;
-    const acima = alvo && total > alvo;
-    let html = `<div style="display:flex; align-items:baseline; gap:7px;">
-      <span class="kpi" style="font-size:34px;">${total}</span>
-      <span style="font-size:14px; color:var(--muted2);">kcal consumidas${alvo ? " · alvo " + alvo : ""}</span></div>`;
+    let html = "";
     if (alvo) {
-      html += `<div class="track" style="margin-top:14px;"><div class="fill" style="width:${pct.toFixed(0)}%; ${acima ? "background:var(--danger);" : ""}"></div></div>
-        <div style="margin-top:8px; font-size:12.5px; color:${acima ? "var(--danger)" : "var(--muted2)"};">${acima ? "Acima do alvo em " + (total - alvo) + " kcal" : "Faltam " + Math.max(0, alvo - total) + " kcal para o alvo"}</div>`;
+      const pct = Math.min(100, (total / alvo) * 100);
+      const acima = total > alvo;
+      html += `<div style="display:flex; align-items:baseline; gap:7px;">
+        <span class="kpi" style="font-size:28px;">${total}</span>
+        <span style="font-size:13px; color:var(--muted2);">kcal · alvo ${alvo}</span></div>
+        <div class="track" style="margin-top:12px;"><div class="fill" style="width:${pct.toFixed(0)}%; ${acima ? "background:var(--danger);" : ""}"></div></div>
+        <div style="margin-top:6px; font-size:12px; color:${acima ? "var(--danger)" : "var(--muted2)"};">${acima ? "Acima do alvo em " + (total - alvo) + " kcal" : "Faltam " + Math.max(0, alvo - total) + " kcal"}</div>`;
     }
-    const icon = { cumpriu: "✅", substituiu: "🔄", pulou: "⏭️" };
-    html += `<div style="margin-top:14px; display:grid; gap:4px;">`;
-    entradas.forEach((e) => {
-      html += `<div class="meal-row" style="padding:8px 4px;">
-        <span style="width:24px;">${icon[e.status] || "•"}</span>
-        <span class="nm">${esc(e.nome || "")}${e.status === "substituiu" && e.itens ? ` <span class="it-sub" style="font-weight:400;">(${esc(e.itens)})</span>` : ""}</span>
-        <span class="kc">${e.kcal ? e.kcal + " kcal" : "—"}</span></div>`;
+    const stLabel = { cumpriu: "Cumprida", substituiu: "Trocada", pulou: "Pulada" };
+    const stColor = { cumpriu: "var(--green)", substituiu: "#B07A1E", pulou: "var(--muted2)" };
+    html += `<div style="margin-top:14px; display:grid; gap:8px;">`;
+    planned.forEach((r, i) => {
+      const e = refsMap[i];
+      const st = e && e.status;
+      html += `<div class="hoje-meal" data-i="${i}">
+        <div style="display:flex; align-items:center; gap:10px;">
+          <span class="mono" style="width:46px; color:var(--green); font-size:12.5px;">${esc(r.horario || "")}</span>
+          <div style="flex:1; min-width:0;">
+            <div style="font-size:14px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${esc(r.nome || "")}</div>
+            <div style="font-size:12px; color:${stColor[st] || "var(--muted3)"};">${stLabel[st] || "Pendente"}${st === "substituiu" && e.itens ? " · " + esc(e.itens) : ""}</div>
+          </div>
+          <span class="mono" style="color:var(--muted3); font-size:12px;">${e ? (e.kcal || 0) : (r.kcal_total || 0)} kcal</span>
+        </div>
+        <div style="margin-top:8px; display:flex; gap:6px; flex-wrap:wrap;">
+          ${st
+            ? `<button class="chip-sm act-corrigir" data-i="${i}">Corrigir</button>
+               <button class="chip-sm danger act-desfazer" data-i="${i}">Desfazer</button>`
+            : `<button class="chip-sm act-ok" data-i="${i}">✅ Cumpri</button>
+               <button class="chip-sm act-troquei" data-i="${i}">🔄 Troquei</button>
+               <button class="chip-sm act-pulei" data-i="${i}">⏭️ Pulei</button>`}
+        </div>
+        <div class="hidden" id="hojesub-${i}"></div>
+      </div>`;
     });
     html += `</div>`;
     $("hojeBody").innerHTML = html;
+    attachHojeHandlers();
+  }
+
+  async function reloadHoje() {
+    try { consumoHoje = await api("/api/consumo/today"); } catch (_) {}
+    renderHoje();
+  }
+  async function registrarConsumo(idx, status, itens, kcal) {
+    const body = { idx, status };
+    if (itens != null) body.itens = itens;
+    if (kcal != null) body.kcal = kcal;
+    await api("/api/consumo/registrar", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    await reloadHoje();
+  }
+  function attachHojeHandlers() {
+    document.querySelectorAll(".act-ok").forEach((b) => b.onclick = () => registrarConsumo(+b.dataset.i, "cumpriu"));
+    document.querySelectorAll(".act-pulei").forEach((b) => b.onclick = () => registrarConsumo(+b.dataset.i, "pulou"));
+    document.querySelectorAll(".act-desfazer").forEach((b) => b.onclick = async () => {
+      await api("/api/consumo/remover", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ idx: +b.dataset.i }) });
+      await reloadHoje();
+    });
+    document.querySelectorAll(".act-corrigir").forEach((b) => b.onclick = () => openTroca(+b.dataset.i, true));
+    document.querySelectorAll(".act-troquei").forEach((b) => b.onclick = () => openTroca(+b.dataset.i, false));
+  }
+  function openTroca(i, corrigir) {
+    const box = $("hojesub-" + i);
+    box.classList.remove("hidden");
+    box.innerHTML = `<div style="margin-top:8px; padding:10px 12px; background:#fff; border:1px solid var(--line); border-radius:10px;">
+      ${corrigir ? `<div style="display:flex; gap:6px; margin-bottom:8px;">
+        <button class="chip-sm reOk">✅ Cumpri</button><button class="chip-sm rePulei">⏭️ Pulei</button></div>
+        <div style="font-size:11.5px; color:var(--muted3); margin-bottom:6px;">ou registre o que comeu:</div>` : ""}
+      <input class="field trTxt" placeholder="o que você comeu" style="height:42px;" />
+      <div style="display:flex; gap:6px; margin-top:6px;">
+        <div class="field-unit" style="width:110px;"><input class="field num trKcal" type="number" placeholder="kcal" style="height:42px; padding-right:42px;" /><span class="u">kcal</span></div>
+        <button class="btn btn-ghost trEstimar" style="height:42px;">Estimar</button>
+        <button class="btn btn-primary trSalvar" style="height:42px; flex:1; justify-content:center;">Salvar</button>
+      </div>
+      <div class="msg trMsg"></div></div>`;
+    const q = (s) => box.querySelector(s);
+    if (corrigir) {
+      q(".reOk").onclick = () => registrarConsumo(i, "cumpriu");
+      q(".rePulei").onclick = () => registrarConsumo(i, "pulou");
+    }
+    q(".trEstimar").onclick = async () => {
+      const txt = q(".trTxt").value.trim();
+      if (!txt) { setMsg(q(".trMsg"), "Escreva o que comeu primeiro.", "err"); return; }
+      loading(q(".trMsg"), "Estimando...");
+      try {
+        const r = await api("/api/estimate-kcal", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ texto: txt }) });
+        if (r.ok) { q(".trKcal").value = r.kcal_total; setMsg(q(".trMsg"), "~" + r.kcal_total + " kcal. Ajuste se quiser e salve.", "ok"); }
+        else setMsg(q(".trMsg"), "Não consegui estimar. Digite as calorias.", "err");
+      } catch (e) { setMsg(q(".trMsg"), e.message, "err"); }
+    };
+    q(".trSalvar").onclick = async () => {
+      const txt = q(".trTxt").value.trim();
+      const kcal = q(".trKcal").value.trim();
+      if (!kcal) { setMsg(q(".trMsg"), "Informe as calorias (ou toque em Estimar).", "err"); return; }
+      loading(q(".trMsg"), "Salvando...");
+      try { await registrarConsumo(i, "substituiu", txt, Number(kcal)); }
+      catch (e) { setMsg(q(".trMsg"), e.message, "err"); }
+    };
   }
 
   function renderAnaliseTeaser() {

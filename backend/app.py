@@ -1116,6 +1116,69 @@ def consumo_today():
     return jsonify(d)
 
 
+@app.route("/api/consumo/registrar", methods=["POST"])
+@require_auth
+def consumo_registrar():
+    """Registra uma refeição direto pelo app (Cumpri/Troquei/Pulei)."""
+    d = request.get_json(silent=True) or {}
+    dia = d.get("dia") or now_local().strftime("%Y-%m-%d")
+    try:
+        idx = int(d.get("idx"))
+    except (TypeError, ValueError):
+        return jsonify({"error": "idx inválido"}), 400
+    status = d.get("status")
+    if status not in ("cumpriu", "substituiu", "pulou"):
+        return jsonify({"error": "status inválido"}), 400
+
+    refs = (latest_diet(g.uid) or {}).get("refeicoes") or []
+    ref = refs[idx] if 0 <= idx < len(refs) else {}
+    nome = ref.get("nome", "Refeição")
+
+    if status == "cumpriu":
+        entry = {"nome": nome, "status": "cumpriu", "kcal": int(ref.get("kcal_total") or 0)}
+    elif status == "pulou":
+        entry = {"nome": nome, "status": "pulou", "kcal": 0}
+    else:  # substituiu
+        try:
+            kcal = int(d.get("kcal"))
+        except (TypeError, ValueError):
+            return jsonify({"error": "Informe as calorias da substituição."}), 400
+        entry = {"nome": nome, "status": "substituiu",
+                 "itens": (d.get("itens") or "").strip(), "kcal": kcal}
+
+    total = update_consumo(g.uid, dia, idx, entry)
+    return jsonify({"ok": True, "total_kcal": total})
+
+
+@app.route("/api/consumo/remover", methods=["POST"])
+@require_auth
+def consumo_remover():
+    """Desfaz o registro de uma refeição (volta para pendente)."""
+    d = request.get_json(silent=True) or {}
+    dia = d.get("dia") or now_local().strftime("%Y-%m-%d")
+    idx = str(d.get("idx"))
+    ref = (db().collection("usuarios").document(g.uid)
+           .collection("consumo").document(dia))
+    data = ref.get().to_dict() or {}
+    refs = data.get("refeicoes") or {}
+    if idx in refs:
+        del refs[idx]
+        data["refeicoes"] = refs
+        data["total_kcal"] = sum((e.get("kcal") or 0) for e in refs.values())
+        ref.set(data)
+    return jsonify({"ok": True, "total_kcal": data.get("total_kcal", 0)})
+
+
+@app.route("/api/estimate-kcal", methods=["POST"])
+@require_auth
+def estimate_kcal_route():
+    """Estima calorias de um texto (para a substituição feita no app)."""
+    texto = ((request.get_json(silent=True) or {}).get("texto") or "").strip()
+    if not texto:
+        return jsonify({"error": "texto vazio"}), 400
+    return jsonify(estimate_calories(texto))
+
+
 # ---------------------------------------------------------------------------
 # Identidade e Admin (somente leitura)
 # ---------------------------------------------------------------------------
