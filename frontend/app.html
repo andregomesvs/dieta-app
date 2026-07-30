@@ -246,15 +246,15 @@
     <!-- Passo 4: telegram -->
     <div id="step4" class="hidden">
       <div style="display:grid;">
-        <div class="tg-step"><span class="n">1</span><div class="tx">Toque em <b>Conectar meu Telegram</b> — abre o bot no app do Telegram.</div></div>
-        <div class="tg-step"><span class="n">2</span><div class="tx">No Telegram, toque em <b>Iniciar</b> (ou Começar).</div></div>
-        <div class="tg-step"><span class="n">3</span><div class="tx">Volte aqui e toque em <b>Enviar teste</b> para confirmar.</div></div>
+        <div class="tg-step"><span class="n">1</span><div class="tx">Toque em <b>Ativar notificações</b> e permita quando o navegador perguntar.</div></div>
+        <div class="tg-step"><span class="n">2</span><div class="tx">Mantenha o app aberto (pode ficar numa aba). No horário de cada refeição, aparece o lembrete.</div></div>
+        <div class="tg-step"><span class="n">3</span><div class="tx">Toque em <b>Testar</b> para ver como fica.</div></div>
       </div>
       <div style="margin-top:16px; display:flex; flex-wrap:wrap; gap:8px;">
-        <button id="btnTgConnect" class="btn btn-primary" style="height:44px;">Conectar meu Telegram</button>
-        <button id="btnTgTest" class="chip-choice" style="height:44px;">Enviar teste</button>
+        <button id="btnNotifAtivar" class="btn btn-primary" style="height:44px;">Ativar notificações</button>
+        <button id="btnNotifTest" class="chip-choice" style="height:44px;">Testar</button>
       </div>
-      <div class="note" style="margin-top:16px;">Depois de conectar, você recebe cada refeição no horário e responde no chat — <b>Cumpri</b>, <b>Comi outra coisa</b> ou <b>Pulei</b> — alimentando seu resumo do dia. Opcional.</div>
+      <div class="note" style="margin-top:16px;">Os lembretes aparecem enquanto o app está aberto no navegador. Você registra cada refeição no card <b>Hoje</b> (Cumpri / Troquei / Pulei).</div>
       <div id="tgMsg" class="msg"></div>
     </div>
   </div>
@@ -517,6 +517,7 @@
     $("btnAdmin").classList.toggle("hidden", !isAdmin);
     $("btnBiblioteca").classList.toggle("hidden", !isStaff);
     showView("home");
+    if (localStorage.getItem("notif_on") && ("Notification" in window) && Notification.permission === "granted") startReminderLoop();
   });
 
   $("btnLogout").onclick = () => signOut(auth);
@@ -943,7 +944,6 @@
         ${linha("TMB (kcal)", p.taxa_metabolica_basal_kcal)}${linha("Cintura (cm)", p.cintura_cm)}
         ${linha("Objetivo", p.objetivo)}
         ${p.meta ? linha("Meta", `${br(p.meta.peso_meta)} kg em ${p.meta.prazo_semanas || "?"} sem`) : ""}
-        ${linha("Telegram", p.telegram_chat_id ? "conectado" : "não")}
       </div>`;
 
       const marc = (p.exames_sangue || {}).marcadores || [];
@@ -1474,7 +1474,7 @@
     { title: "Importar bioimpedância", sub: "Tem o PDF do exame? A IA preenche seus dados em segundos. Se não tiver, é só pular." },
     { title: "Seus dados", sub: "Confira o que veio do exame e ajuste o que precisar." },
     { title: "Objetivo e rotina", sub: "Quanto mais preciso você for sobre treinos e horários, melhor o plano encaixa no seu dia." },
-    { title: "Lembretes no Telegram", sub: "Receba cada refeição no horário certo. Configura uma vez, funciona sempre." },
+    { title: "Notificações", sub: "Receba um lembrete de cada refeição no horário, direto no navegador." },
   ];
 
   function startWizard() {
@@ -1586,31 +1586,57 @@
     finally { $("btnNext").disabled = false; }
   }
 
-  // passo 4 — telegram (conectar via deep-link + testar)
-  $("btnTgConnect").onclick = async () => {
-    loading($("tgMsg"), "Gerando código de conexão...");
+  // passo 4 — notificações no navegador (Web Notifications)
+  $("btnNotifAtivar").onclick = async () => {
+    if (!("Notification" in window)) { setMsg($("tgMsg"), "Seu navegador não suporta notificações.", "err"); return; }
     try {
-      const res = await api("/api/telegram/link-code", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
-      const link = res.link, code = res.code;
-      $("tgMsg").className = "msg ok";
-      $("tgMsg").innerHTML =
-        `Conecte de um destes jeitos:<br>` +
-        `<b>1)</b> <a href="${link}" target="_blank" rel="noopener">Abrir @minhadietazbot</a> e tocar em <b>Iniciar</b>.<br>` +
-        `<b>2)</b> Se não abrir (ex.: Firefox sem o Telegram no PC): abra o Telegram no celular ou em ` +
-        `<a href="https://web.telegram.org/k/#@minhadietazbot" target="_blank" rel="noopener">web.telegram.org</a>, ` +
-        `procure <b>@minhadietazbot</b> e envie a mensagem:<br>` +
-        `<span class="mono" style="display:inline-block; margin-top:4px; padding:4px 10px; background:var(--soft); border-radius:8px;">/start ${code}</span><br>` +
-        `Depois volte aqui e toque em <b>Enviar teste</b>.`;
-      window.open(link, "_blank");
+      const perm = await Notification.requestPermission();
+      if (perm === "granted") {
+        localStorage.setItem("notif_on", "1");
+        setMsg($("tgMsg"), "Notificações ativadas! Deixe o app aberto numa aba.", "ok");
+        startReminderLoop();
+      } else {
+        setMsg($("tgMsg"), "Permissão negada. Ative nas configurações do site no navegador.", "err");
+      }
     } catch (e) { setMsg($("tgMsg"), e.message, "err"); }
   };
-  $("btnTgTest").onclick = async () => {
-    loading($("tgMsg"), "Enviando teste...");
-    try {
-      await api("/api/telegram/test", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
-      setMsg($("tgMsg"), "Teste enviado! Confira seu Telegram.", "ok");
-    } catch (e) { setMsg($("tgMsg"), e.message + " — você conectou o Telegram no passo anterior?", "err"); }
+  $("btnNotifTest").onclick = () => {
+    if (!("Notification" in window) || Notification.permission !== "granted") {
+      setMsg($("tgMsg"), "Ative as notificações primeiro.", "err"); return;
+    }
+    showNotif("🍽 Minha Dieta", "Exemplo de lembrete — Almoço 12:30");
+    setMsg($("tgMsg"), "Enviada! Veja a notificação do navegador.", "ok");
   };
+
+  function showNotif(title, body) {
+    try { new Notification(title, { body }); } catch (_) {}
+  }
+
+  // agendador de lembretes de refeição (dispara enquanto o app está aberto)
+  let reminderTimer = null;
+  function startReminderLoop() {
+    if (reminderTimer) return;
+    checkReminders();
+    reminderTimer = setInterval(checkReminders, 60000);
+  }
+  function checkReminders() {
+    if (!("Notification" in window) || Notification.permission !== "granted") return;
+    const dieta = (diets[0] && diets[0].dieta) || {};
+    const refs = dieta.refeicoes || [];
+    if (!refs.length) return;
+    const now = new Date();
+    const mins = now.getHours() * 60 + now.getMinutes();
+    const hojeStr = now.toISOString().slice(0, 10);
+    refs.forEach((r, i) => {
+      const t = parseHora(r.horario);
+      if (t == null || Math.abs(mins - t) > 1) return;
+      const key = "notif_" + hojeStr + "_" + i;
+      if (localStorage.getItem(key)) return;
+      localStorage.setItem(key, "1");
+      const itens = (r.itens || []).map((it) => it.alimento).filter(Boolean).slice(0, 4).join(", ");
+      showNotif("🍽 " + (r.nome || "Refeição") + " · " + (r.horario || ""), itens || "Hora da sua refeição");
+    });
+  }
 
   // ---------- ANÁLISE ----------
   function openAnalise() {
@@ -1906,7 +1932,7 @@
     const d = curDietObj || {};
     const area = $("printArea");
     let html = `<div class="serif" style="font-size:24px;">Editar dieta</div>
-      <div style="font-size:12.5px; color:var(--muted3); margin:2px 0 14px;">Ajuste horários, nomes e itens. Os horários passam a valer nos lembretes do Telegram.</div>`;
+      <div style="font-size:12.5px; color:var(--muted3); margin:2px 0 14px;">Ajuste horários, nomes e itens. Os horários passam a valer nas notificações.</div>`;
     (d.refeicoes || []).forEach((r, mi) => {
       html += `<div class="diet-meal">
         <div class="form-grid" style="margin-bottom:8px;">
