@@ -651,18 +651,23 @@
   }
   async function reloadSemana() { try { treinoSemana = await api("/api/treino/semana"); } catch (_) {} }
 
+  const FEEDBACK_FATOR = { leve: 0.7, moderado: 1.0, intenso: 1.25 };
+  let feedbackSel = "moderado";
   function renderTreino() {
     const has = treinoMeu && treinoMeu.sessoes && treinoMeu.sessoes.length;
     if (!has) { $("treinoBody").innerHTML = treinoGenFormHtml(); wireTreinoGen(); return; }
-    if (treinoView === "sessao") renderTreinoSession(); else renderTreinoCalendar();
+    if (treinoView === "sessao") renderTreinoSession();
+    else if (treinoView === "atividade") renderAtividadeLivre();
+    else renderTreinoCalendar();
   }
 
   function renderTreinoCalendar() {
     const dias = treinoSemana.dias || [];
     const checks = treinoSemana.checkins || {};
     const hoje = treinoSemana.hoje || new Date().toISOString().slice(0, 10);
-    let agendadas = 0, feitas = 0;
+    let agendadas = 0, feitas = 0, kcalSemana = 0;
     dias.forEach((d) => { if (sessaoDoDow(d.dow)) { agendadas++; if ((checks[d.data] || {}).finalizado) feitas++; } });
+    Object.values(checks).forEach((c) => { kcalSemana += (c.kcal_sessao || 0) + (c.kcal_atividade || 0); });
     const pct = agendadas ? Math.round((feitas / agendadas) * 100) : 0;
     let renovar = "";
     if (treinoMeu.data_fim) {
@@ -679,30 +684,38 @@
         <div class="track" style="flex:1;"><div class="fill" style="width:${pct}%;"></div></div>
         <span class="mono" style="font-size:12.5px; color:var(--muted);">${feitas}/${agendadas} · ${pct}%</span>
       </div>
+      <div style="margin-top:8px; font-size:13px; color:var(--muted);">🔥 Você já gastou <b>${kcalSemana}</b> kcal em treino nesta semana.</div>
       <div style="margin-top:14px; display:grid; grid-template-columns:repeat(7,1fr); gap:6px;">`;
     dias.forEach((d) => {
       const sd = sessaoDoDow(d.dow);
       const done = (checks[d.data] || {}).finalizado;
       const passou = d.data < hoje, ehHoje = d.data === hoje;
+      const ck = checks[d.data] || {};
       let bg = "var(--soft)", bd = "var(--line)", cor = "var(--muted3)", txt = "—";
       if (sd) {
         if (done) { bg = "rgba(20,115,90,.12)"; bd = "rgba(20,115,90,.4)"; cor = "var(--green)"; txt = "✓ feito"; }
         else if (passou) { bg = "rgba(192,57,43,.10)"; bd = "rgba(192,57,43,.35)"; cor = "var(--danger)"; txt = "não feito"; }
         else { bg = "#fff"; bd = "var(--line2)"; cor = "#3C4340"; txt = esc(sd.s.foco || "treino"); }
+      } else if (ck.atividade) {
+        bg = "rgba(62,107,140,.12)"; bd = "rgba(62,107,140,.4)"; cor = "#3E6B8C"; txt = "🏃 " + esc(String(ck.atividade).slice(0, 12));
       }
-      html += `<div class="tr-day" data-dow="${d.dow}" data-date="${d.data}" style="cursor:${sd ? "pointer" : "default"}; border:1px solid ${bd}; background:${bg}; border-radius:12px; padding:8px 3px; text-align:center; ${ehHoje ? "box-shadow:0 0 0 2px rgba(20,115,90,.25);" : ""}">
+      html += `<div class="tr-day" data-dow="${d.dow}" data-date="${d.data}" style="cursor:pointer; border:1px solid ${bd}; background:${bg}; border-radius:12px; padding:8px 3px; text-align:center; ${ehHoje ? "box-shadow:0 0 0 2px rgba(20,115,90,.25);" : ""}">
         <div style="font-size:11px; color:var(--muted3);">${WD_LABEL[d.dow]}</div>
         <div class="mono" style="font-size:13px; margin:2px 0;">${d.data.slice(8, 10)}</div>
         <div style="font-size:9.5px; color:${cor}; line-height:1.1; overflow:hidden;">${txt}</div>
       </div>`;
     });
     html += `</div>
-      <div style="font-size:11.5px; color:var(--muted3); margin-top:8px;">Toque num dia com treino para registrar. Verde = feito · vermelho = não feito.</div>
+      <div style="font-size:11.5px; color:var(--muted3); margin-top:8px;">Toque num dia. Dia com treino: registre a sessão. Dia livre: registre outra atividade (corrida, luta…). Verde = feito · vermelho = não feito · azul = atividade.</div>
       <div class="disclaimer" style="margin-top:12px;">${esc(treinoMeu.aviso || "Plano sugerido por IA — não substitui um profissional.")}</div></div>`;
     $("treinoBody").innerHTML = html;
     document.querySelectorAll(".tr-day").forEach((el) => {
       const sd = sessaoDoDow(+el.dataset.dow);
-      if (sd) el.onclick = () => { detIdx = sd.idx; detData = el.dataset.date; treinoView = "sessao"; renderTreino(); window.scrollTo(0, 0); };
+      el.onclick = () => {
+        detData = el.dataset.date;
+        if (sd) { detIdx = sd.idx; treinoView = "sessao"; } else { treinoView = "atividade"; }
+        renderTreino(); window.scrollTo(0, 0);
+      };
     });
     const br2 = $("btnRenovar"); if (br2) br2.onclick = renovarTreino;
     const bn = $("btnNovoTreino"); if (bn) bn.onclick = () => { treinoMeu = null; renderTreino(); };
@@ -734,11 +747,24 @@
         </div></div></div>`;
     });
     html += `</div>`;
-    if (!finalizado) html += `<button id="btnFinalizarTreino" class="btn btn-primary" style="width:100%; height:48px; justify-content:center; margin-top:14px;">Finalizar treino (${feitosCount}/${totalEx})</button>`;
+    if (!finalizado) {
+      feedbackSel = "moderado";
+      html += `<div style="margin-top:16px;"><div class="flabel">Como foi o treino?</div>
+        <div style="display:flex; gap:6px; flex-wrap:wrap;">
+          ${["leve","moderado","intenso"].map((f) => `<button type="button" class="chip-choice fb-chip ${f === feedbackSel ? "active" : ""}" data-f="${f}">${f}</button>`).join("")}
+        </div></div>
+        <button id="btnFinalizarTreino" class="btn btn-primary" style="width:100%; height:48px; justify-content:center; margin-top:12px;">Finalizar treino (${feitosCount}/${totalEx})</button>`;
+    } else if (chk.feedback) {
+      html += `<div style="margin-top:12px; font-size:13px; color:var(--muted);">Feedback: <b>${esc(chk.feedback)}</b>${chk.kcal_sessao ? " · ~" + chk.kcal_sessao + " kcal" : ""}</div>`;
+    }
     html += `</div>`;
     $("treinoBody").innerHTML = html;
     $("btnVoltaCal").onclick = () => { treinoView = "cal"; renderTreino(); };
     document.querySelectorAll(".tr-check").forEach((c) => c.onchange = () => toggleEx(+c.dataset.i, c.checked));
+    document.querySelectorAll(".fb-chip").forEach((b) => b.onclick = () => {
+      feedbackSel = b.dataset.f;
+      document.querySelectorAll(".fb-chip").forEach((x) => x.classList.toggle("active", x === b));
+    });
     const bf = $("btnFinalizarTreino"); if (bf) bf.onclick = finalizarTreino;
   }
 
@@ -750,17 +776,66 @@
     } catch (e) { setMsg($("treinoMsg"), e.message, "err"); }
   }
   async function finalizarTreino() {
-    const total = (treinoMeu.sessoes[detIdx].exercicios || []).length;
+    const s = treinoMeu.sessoes[detIdx] || {};
+    const total = (s.exercicios || []).length;
+    const base = s.kcal_estimado || 300;
+    const kcal = Math.round(base * (FEEDBACK_FATOR[feedbackSel] || 1));
     loading($("treinoMsg"), "Finalizando...");
     try {
       await api("/api/treino/finalizar", { method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessao_idx: detIdx, plano_id: treinoMeu.id, total_exercicios: total, data: detData }) });
+        body: JSON.stringify({ sessao_idx: detIdx, plano_id: treinoMeu.id, total_exercicios: total, data: detData, feedback: feedbackSel, kcal }) });
       await reloadSemana();
       setMsg($("treinoMsg"), "Treino finalizado! Check-in registrado.", "ok");
       treinoView = "cal"; renderTreino();
     } catch (e) { setMsg($("treinoMsg"), e.message, "err"); }
   }
   function renovarTreino() { gerarTreino(treinoMeu.prefs || {}); }
+
+  function renderAtividadeLivre() {
+    const ck = (treinoSemana.checkins || {})[detData] || {};
+    let atvFb = ck.atividade_intensidade || "moderado";
+    const html = `<div class="card">
+      <div class="row" style="justify-content:space-between;">
+        <div><div class="serif" style="font-size:22px;">Atividade livre</div>
+        <div style="font-size:12px; color:var(--muted3);">${fmtBR(detData)}</div></div>
+        <button id="btnVoltaCal2" class="btn btn-ghost" style="height:36px;">← Calendário</button>
+      </div>
+      <div style="font-size:12.5px; color:var(--muted3); margin-top:2px;">Fez algo fora do plano? Registre aqui (ex.: corrida de 10 km, treino de Jiu-Jitsu).</div>
+      <label style="display:block; margin-top:12px;"><span class="flabel">O que você fez</span><input id="atv_txt" class="field" value="${esc(ck.atividade || "")}" placeholder="ex.: corrida de 10 km" /></label>
+      <div style="margin-top:10px;"><span class="flabel">Intensidade</span>
+        <div style="display:flex; gap:6px;">${["leve","moderado","intenso"].map((f) => `<button type="button" class="chip-choice atv-fb ${atvFb === f ? "active" : ""}" data-f="${f}">${f}</button>`).join("")}</div></div>
+      <div style="margin-top:10px; display:flex; gap:6px; align-items:flex-end;">
+        <label style="flex:1;"><span class="flabel">Calorias gastas</span><div class="field-unit"><input id="atv_kcal" class="field num" type="number" value="${ck.kcal_atividade || ""}" placeholder="ex.: 700" style="padding-right:42px;" /><span class="u">kcal</span></div></label>
+        <button id="btnEstimarAtv" class="btn btn-ghost" style="height:48px;">Estimar</button>
+      </div>
+      <button id="btnSalvarAtv" class="btn btn-primary" style="width:100%; height:48px; justify-content:center; margin-top:14px;">Salvar atividade</button>
+      <div id="atvMsg" class="msg"></div></div>`;
+    $("treinoBody").innerHTML = html;
+    document.querySelectorAll(".atv-fb").forEach((b) => b.onclick = () => { atvFb = b.dataset.f; document.querySelectorAll(".atv-fb").forEach((x) => x.classList.toggle("active", x === b)); });
+    $("btnVoltaCal2").onclick = () => { treinoView = "cal"; renderTreino(); };
+    $("btnEstimarAtv").onclick = async () => {
+      const txt = $("atv_txt").value.trim();
+      if (!txt) { setMsg($("atvMsg"), "Descreva a atividade primeiro.", "err"); return; }
+      loading($("atvMsg"), "Estimando...");
+      try {
+        const r = await api("/api/treino/estimar-atividade", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ texto: txt }) });
+        if (r.ok) { $("atv_kcal").value = r.kcal; setMsg($("atvMsg"), "~" + r.kcal + " kcal. Ajuste se quiser.", "ok"); }
+        else setMsg($("atvMsg"), "Não consegui estimar. Informe as calorias.", "err");
+      } catch (e) { setMsg($("atvMsg"), e.message, "err"); }
+    };
+    $("btnSalvarAtv").onclick = async () => {
+      const txt = $("atv_txt").value.trim();
+      if (!txt) { setMsg($("atvMsg"), "Descreva a atividade.", "err"); return; }
+      loading($("atvMsg"), "Salvando...");
+      try {
+        await api("/api/treino/atividade", { method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ data: detData, atividade: txt, intensidade: atvFb, kcal: Number($("atv_kcal").value) || 0 }) });
+        await reloadSemana();
+        setMsg($("treinoMsg"), "Atividade registrada!", "ok");
+        treinoView = "cal"; renderTreino();
+      } catch (e) { setMsg($("atvMsg"), e.message, "err"); }
+    };
+  }
 
   function treinoGenFormHtml() {
     const chip = (v, cls) => `<button type="button" class="chip-choice ${cls}" data-v="${v}">${v}</button>`;
@@ -985,6 +1060,28 @@
           consumo.slice(0, 10).map((c) => {
             const n = Object.keys(c.refeicoes || {}).length;
             return `<div class="meal-row" style="padding:7px 4px;"><span class="time" style="width:auto;">${esc((c.data || "").split("-").reverse().join("/"))}</span><span class="nm" style="font-weight:400;">${n} refeição(ões)</span><span class="kc">${c.total_kcal || 0}${c.alvo_kcal ? " / " + c.alvo_kcal : ""} kcal</span></div>`;
+          }).join("") + `</div>`;
+      }
+      html += `</div>`;
+
+      // treino: aderência e feedbacks
+      const tses = r.treino_sessoes || [];
+      html += `<div class="card" style="margin-top:12px;"><div class="card-title" style="font-size:18px;">Treino</div>`;
+      if (r.treino_plano) html += `<div style="font-size:12.5px; color:var(--muted3); margin-top:2px;">${esc(r.treino_plano.nome || "")} · ${esc(r.treino_plano.nivel || "")}${r.treino_plano.data_fim ? " · até " + esc((r.treino_plano.data_fim || "").split("-").reverse().join("/")) : ""}</div>`;
+      if (!tses.length) { html += `<div class="empty" style="margin-top:8px;">Sem registros de treino ainda.</div>`; }
+      else {
+        const fin = tses.filter((t) => t.finalizado).length;
+        const kcalTot = tses.reduce((a, t) => a + (t.kcal_sessao || 0) + (t.kcal_atividade || 0), 0);
+        html += `<div class="totals" style="margin-top:12px;">
+          <div class="box"><b>${fin}</b><small>sessões feitas</small></div>
+          <div class="box"><b>${tses.filter((t) => t.atividade).length}</b><small>atividades livres</small></div>
+          <div class="box"><b>${kcalTot}</b><small>kcal (30d)</small></div></div>
+          <div style="margin-top:10px; display:grid; gap:4px;">` +
+          tses.slice(0, 12).map((t) => {
+            const dt = (t.data || "").split("-").reverse().join("/");
+            const info = t.finalizado ? ("sessão · " + (t.feedback || "?") + (t.kcal_sessao ? " · " + t.kcal_sessao + " kcal" : ""))
+              : (t.atividade ? ("🏃 " + esc(t.atividade) + (t.kcal_atividade ? " · " + t.kcal_atividade + " kcal" : "")) : "iniciado");
+            return `<div class="meal-row" style="padding:7px 4px;"><span class="time" style="width:auto;">${esc(dt)}</span><span class="nm" style="font-weight:400;">${esc(info)}</span></div>`;
           }).join("") + `</div>`;
       }
       html += `</div>`;

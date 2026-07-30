@@ -1339,6 +1339,7 @@ Devolva APENAS JSON válido:
     {
       "dia_semana": "seg"|"ter"|"qua"|"qui"|"sex"|"sab"|"dom",
       "foco": string,
+      "kcal_estimado": number,
       "exercicios": [
         {"exercicio_id": string, "series": number, "reps": string,
          "carga": string, "intervalo_s": number, "obs": string}
@@ -1354,6 +1355,8 @@ bem distribuídas na semana (evite dias seguidos quando possível).
 pessoa já treina algo intenso, ajuste volume para não sobrecarregar; adapte os \
 exercícios ao equipamento do local (casa, academia ou rua).
 - Séries, repetições e intervalos coerentes com o nível.
+- "kcal_estimado": estimativa de calorias gastas na sessão (número), coerente com \
+o volume e a intensidade.
 - Use somente exercicio_id da lista fornecida; nunca invente exercícios."""
 
 
@@ -1531,10 +1534,58 @@ def treino_finalizar():
     data["sessao_idx"] = body.get("sessao_idx")
     data["plano_id"] = body.get("plano_id")
     data["total_exercicios"] = body.get("total_exercicios")
+    data["feedback"] = body.get("feedback")  # leve | moderado | intenso
+    try:
+        data["kcal_sessao"] = int(body.get("kcal") or 0)
+    except (TypeError, ValueError):
+        data["kcal_sessao"] = 0
     data["finalizado"] = True
     data["finalizado_em"] = datetime.datetime.utcnow().isoformat()
     ref.set(data, merge=True)
     return jsonify({"ok": True})
+
+
+@app.route("/api/treino/atividade", methods=["POST"])
+@require_auth
+def treino_atividade():
+    """Registra uma atividade livre (ex.: corrida 10km) num dia do calendário."""
+    body = request.get_json(silent=True) or {}
+    dia = body.get("data") or now_local().strftime("%Y-%m-%d")
+    ref = db().collection("usuarios").document(g.uid).collection("treino_sessoes").document(dia)
+    data = ref.get().to_dict() or {"data": dia}
+    data["atividade"] = (body.get("atividade") or "").strip()
+    data["atividade_intensidade"] = body.get("intensidade")
+    try:
+        data["kcal_atividade"] = int(body.get("kcal") or 0)
+    except (TypeError, ValueError):
+        data["kcal_atividade"] = 0
+    data["atividade_em"] = datetime.datetime.utcnow().isoformat()
+    ref.set(data, merge=True)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/treino/estimar-atividade", methods=["POST"])
+@require_auth
+def treino_estimar_atividade():
+    """Estima as calorias gastas numa atividade descrita (sem dados clínicos)."""
+    body = request.get_json(silent=True) or {}
+    texto = (body.get("texto") or "").strip()
+    if not texto:
+        return jsonify({"error": "descreva a atividade"}), 400
+    peso = (db().collection("usuarios").document(g.uid).get().to_dict() or {}).get("peso_kg")
+    prompt = ("Estime as calorias gastas nesta atividade física. Responda APENAS JSON "
+              '{"kcal": number}. '
+              + (f"Peso da pessoa: {peso} kg. " if peso else "")
+              + f"Atividade: {texto}")
+    try:
+        resp = gemini().generate_content(prompt)
+        parsed = _safe_json((resp.text or "").strip())
+        kcal = int(parsed.get("kcal") or 0)
+        if kcal <= 0:
+            return jsonify({"ok": False})
+        return jsonify({"ok": True, "kcal": kcal})
+    except Exception as e:  # noqa: BLE001
+        return jsonify({"ok": False, "erro": str(e)})
 
 
 @app.route("/api/treinos", methods=["GET"])
@@ -1619,8 +1670,12 @@ def admin_user_detail(uid):
                 .order_by("data").limit(200).stream()]
     consumo = [dict(c.to_dict(), id=c.id) for c in base.collection("consumo")
                .order_by("data", direction=firestore.Query.DESCENDING).limit(30).stream()]
-    return jsonify({"uid": uid, "perfil": perfil, "dietas": dietas,
-                    "medicoes": medicoes, "consumo": consumo})
+    treino_sessoes = [dict(t.to_dict(), id=t.id) for t in base.collection("treino_sessoes")
+                      .order_by("data", direction=firestore.Query.DESCENDING).limit(30).stream()]
+    treino_plano = next((dict(d.to_dict(), id=d.id) for d in base.collection("treinos")
+                         .order_by("criado_em", direction=firestore.Query.DESCENDING).limit(1).stream()), None)
+    return jsonify({"uid": uid, "perfil": perfil, "dietas": dietas, "medicoes": medicoes,
+                    "consumo": consumo, "treino_plano": treino_plano, "treino_sessoes": treino_sessoes})
 
 
 # ---------------------------------------------------------------------------
