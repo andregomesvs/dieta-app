@@ -652,6 +652,21 @@ apenas quando os exames justificarem. Monte a dieta no formato JSON solicitado."
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/api/diets/<did>", methods=["PUT"])
+@require_auth
+def update_diet(did):
+    """Atualiza o conteúdo de uma dieta (edição manual: horários, itens...)."""
+    data = request.get_json(silent=True) or {}
+    dieta = data.get("dieta")
+    if not isinstance(dieta, dict):
+        return jsonify({"error": "dieta inválida"}), 400
+    ref = db().collection("usuarios").document(g.uid).collection("dietas").document(did)
+    if not ref.get().exists:
+        return jsonify({"error": "dieta não encontrada"}), 404
+    ref.set({"dieta": dieta, "editado_em": datetime.datetime.utcnow().isoformat()}, merge=True)
+    return jsonify({"ok": True})
+
+
 @app.route("/api/diets", methods=["GET"])
 @require_auth
 def list_diets():
@@ -714,13 +729,20 @@ def add_measurement():
             except (TypeError, ValueError):
                 pass
     reg["criado_em"] = datetime.datetime.utcnow().isoformat()
-    ref = db().collection("usuarios").document(g.uid).collection("medicoes").add(reg)
+    base = db().collection("usuarios").document(g.uid)
+    ref = base.collection("medicoes").add(reg)
     reg["id"] = ref[1].id
 
-    # mantém o perfil com os valores mais recentes
-    perfil_update = {c: reg[c] for c in MEDICAO_CAMPOS if c in reg}
-    if perfil_update:
-        db().collection("usuarios").document(g.uid).set(perfil_update, merge=True)
+    # o perfil reflete a medição MAIS RECENTE por data do exame (não a última inserida)
+    recentes = list(base.collection("medicoes")
+                    .order_by("data", direction=firestore.Query.DESCENDING).limit(1).stream())
+    if recentes:
+        ult = recentes[0].to_dict() or {}
+        perfil_update = {c: ult[c] for c in MEDICAO_CAMPOS if ult.get(c) is not None}
+        if ult.get("data"):
+            perfil_update["medicao_data"] = ult["data"]
+        if perfil_update:
+            base.set(perfil_update, merge=True)
     return jsonify(reg)
 
 

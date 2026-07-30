@@ -217,6 +217,12 @@
       <div style="display:grid; gap:18px;">
         <label><span class="flabel">Qual é o seu objetivo?</span>
           <input id="objetivo" class="field" type="text" placeholder="Ex.: perder 8 kg mantendo massa muscular" /></label>
+        <div class="form-grid">
+          <label><span class="flabel">Peso meta</span>
+            <div class="field-unit"><input id="wiz_peso_meta" class="field num" type="number" step="0.1" placeholder="81" style="padding-right:48px;" /><span class="u">kg</span></div></label>
+          <label><span class="flabel">% gordura meta (opcional)</span>
+            <div class="field-unit"><input id="wiz_gordura_meta" class="field num" type="number" step="0.1" placeholder="15" style="padding-right:48px;" /><span class="u">%</span></div></label>
+        </div>
         <div>
           <span class="flabel">Prazo</span>
           <div id="prazoWrap" style="display:flex; flex-wrap:wrap; gap:8px;">
@@ -265,6 +271,7 @@
       Voltar
     </button>
     <div style="flex:1;"></div>
+    <button id="btnEditDiet" class="btn btn-ghost" style="height:40px;">✎ Editar</button>
     <button id="btnExportPdf" class="btn btn-primary" style="height:40px;">⬇ Exportar PDF</button>
   </div>
   <div class="card" style="margin-top:12px;">
@@ -826,18 +833,29 @@
     finally { $("btnSaveMeta").disabled = false; }
   };
 
+  // valor mais recente de cada métrica (medição por data > perfil)
+  function latestVal(k) {
+    const sorted = medicoes.slice().sort((a, b) => ((a.data || "") < (b.data || "") ? 1 : -1));
+    for (const m of sorted) if (m[k] != null) return m[k];
+    return profile[k];
+  }
   function renderComp() {
     const rows = [];
-    if (profile.percentual_gordura != null)
-      rows.push({ lab: "Gordura corporal", val: br(profile.percentual_gordura) + "%", w: Math.min(95, profile.percentual_gordura), color: "#C08A3E" });
-    if (profile.massa_magra_kg != null) {
-      const w = profile.peso_kg ? (profile.massa_magra_kg / profile.peso_kg) * 100 : 70;
-      rows.push({ lab: "Massa muscular", val: br(profile.massa_magra_kg) + " kg", w: Math.min(95, w), color: "#14735A" });
+    const pg = latestVal("percentual_gordura");
+    const mm = latestVal("massa_magra_kg");
+    const gv = latestVal("gordura_visceral");
+    const pk = latestVal("peso_kg");
+    const tmb = profile.taxa_metabolica_basal_kcal;
+    if (pg != null)
+      rows.push({ lab: "Gordura corporal", val: br(pg) + "%", w: Math.min(95, pg), color: "#C08A3E" });
+    if (mm != null) {
+      const w = pk ? (mm / pk) * 100 : 70;
+      rows.push({ lab: "Massa muscular", val: br(mm) + " kg", w: Math.min(95, w), color: "#14735A" });
     }
-    if (profile.gordura_visceral != null)
-      rows.push({ lab: "Gordura visceral", val: "nível " + br(profile.gordura_visceral), w: Math.min(95, profile.gordura_visceral * 7), color: profile.gordura_visceral >= 10 ? "#C0392B" : "#C08A3E" });
-    if (profile.taxa_metabolica_basal_kcal != null)
-      rows.push({ lab: "Taxa metabólica", val: br(profile.taxa_metabolica_basal_kcal) + " kcal", w: Math.min(95, Math.max(20, (profile.taxa_metabolica_basal_kcal - 1000) / 15)), color: "#3E6B8C" });
+    if (gv != null)
+      rows.push({ lab: "Gordura visceral", val: "nível " + br(gv), w: Math.min(95, gv * 7), color: gv >= 10 ? "#C0392B" : "#C08A3E" });
+    if (tmb != null)
+      rows.push({ lab: "Taxa metabólica", val: br(tmb) + " kcal", w: Math.min(95, Math.max(20, (tmb - 1000) / 15)), color: "#3E6B8C" });
 
     if (!rows.length) { $("compBody").innerHTML = `<div class="empty">Sem dados de composição ainda.</div>`; return; }
     $("compBody").innerHTML = rows.map((r) => `
@@ -997,7 +1015,11 @@
   function fillForm() {
     PROFILE_FIELDS.forEach((f) => { $(f).value = profile[f] != null ? profile[f] : ""; });
     EXTRA_FIELDS.forEach((f) => { $(f).value = profile[f] != null ? profile[f] : ""; });
+    const meta = profile.meta || {};
+    $("wiz_peso_meta").value = meta.peso_meta != null ? meta.peso_meta : "";
+    $("wiz_gordura_meta").value = meta.gordura_meta != null ? meta.gordura_meta : "";
   }
+  const PRAZO_SEMANAS = { mensal: 4, trimestral: 13, anual: 52 };
   function collectProfile() {
     const p = {};
     PROFILE_FIELDS.forEach((f) => {
@@ -1066,6 +1088,18 @@
     $("btnNext").disabled = true;
     try {
       const perfil = collectProfile();
+      // meta estruturada vinda do wizard (evita cadastrar 2x)
+      const pesoMeta = $("wiz_peso_meta").value.trim();
+      if (pesoMeta !== "") {
+        const prev = profile.meta || {};
+        perfil.meta = {
+          peso_inicial: prev.peso_inicial != null ? prev.peso_inicial : (currentWeight() != null ? currentWeight() : (perfil.peso_kg || null)),
+          peso_meta: Number(pesoMeta),
+          gordura_meta: $("wiz_gordura_meta").value.trim() !== "" ? Number($("wiz_gordura_meta").value) : null,
+          prazo_semanas: PRAZO_SEMANAS[selectedPrazo] || 4,
+          data_inicio: prev.data_inicio || new Date().toISOString().slice(0, 10),
+        };
+      }
       await api("/api/profile", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(perfil) });
       await api("/api/generate-diet", { method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ perfil, objetivo: $("objetivo").value.trim(), prazo: selectedPrazo,
@@ -1382,13 +1416,89 @@
   }
 
   // ---------- DIETA ----------
+  let curDietId = null, curDietObj = null, curDietMeta = null;
   function openDiet(id) {
     const d = diets.find((x) => x.id === id);
     if (!d) return;
+    curDietId = d.id; curDietObj = d.dieta; curDietMeta = d;
     renderDiet(d.dieta, d);
     showView("dieta");
   }
   $("btnExportPdf").onclick = () => window.print();
+
+  // ---- edição da dieta ----
+  $("btnEditDiet").onclick = () => renderDietEdit();
+
+  function renderDietEdit() {
+    const d = curDietObj || {};
+    const area = $("printArea");
+    let html = `<div class="serif" style="font-size:24px;">Editar dieta</div>
+      <div style="font-size:12.5px; color:var(--muted3); margin:2px 0 14px;">Ajuste horários, nomes e itens. Os horários passam a valer nos lembretes do Telegram.</div>`;
+    (d.refeicoes || []).forEach((r, mi) => {
+      html += `<div class="diet-meal">
+        <div class="form-grid" style="margin-bottom:8px;">
+          <label class="col-span"><span class="flabel">Refeição</span><input class="field ed-nome" data-m="${mi}" value="${esc(r.nome || "")}" /></label>
+          <label><span class="flabel">Horário</span><input class="field ed-hora" data-m="${mi}" type="time" value="${horaToInput(r.horario)}" /></label>
+        </div>
+        <div class="ed-itens" data-m="${mi}">`;
+      (r.itens || []).forEach((it, ii) => {
+        html += `<div style="display:grid; grid-template-columns:1fr 90px 70px; gap:6px; margin-bottom:6px;">
+          <input class="field ed-alim" data-m="${mi}" data-i="${ii}" placeholder="alimento" value="${esc(it.alimento || "")}" />
+          <input class="field ed-porc" data-m="${mi}" data-i="${ii}" placeholder="porção" value="${esc(it.porcao || "")}" />
+          <input class="field num ed-kcal" data-m="${mi}" data-i="${ii}" type="number" placeholder="kcal" value="${it.kcal != null ? it.kcal : ""}" />
+        </div>`;
+      });
+      html += `</div></div>`;
+    });
+    html += `<div class="no-print" style="display:flex; gap:10px; margin-top:14px;">
+      <button id="btnCancelEdit" class="btn btn-ghost" style="height:46px;">Cancelar</button>
+      <button id="btnSaveEdit" class="btn btn-primary" style="flex:1; height:46px; justify-content:center;">Salvar alterações</button></div>
+      <div id="editMsg" class="msg"></div>`;
+    area.innerHTML = html;
+    $("btnCancelEdit").onclick = () => renderDiet(curDietObj, curDietMeta);
+    $("btnSaveEdit").onclick = saveDietEdit;
+  }
+
+  function horaToInput(h) {
+    const m = String(h || "").match(/(\d{1,2})\s*[:hH]\s*(\d{1,2})?/);
+    if (!m) return "";
+    const hh = String(Math.min(23, parseInt(m[1]))).padStart(2, "0");
+    const mm = String(m[2] ? Math.min(59, parseInt(m[2])) : 0).padStart(2, "0");
+    return hh + ":" + mm;
+  }
+
+  async function saveDietEdit() {
+    const area = $("printArea");
+    const nova = JSON.parse(JSON.stringify(curDietObj || {}));
+    (nova.refeicoes || []).forEach((r, mi) => {
+      const nomeEl = area.querySelector(`.ed-nome[data-m="${mi}"]`);
+      const horaEl = area.querySelector(`.ed-hora[data-m="${mi}"]`);
+      if (nomeEl) r.nome = nomeEl.value.trim();
+      if (horaEl && horaEl.value) r.horario = horaEl.value;
+      let soma = 0;
+      (r.itens || []).forEach((it, ii) => {
+        const a = area.querySelector(`.ed-alim[data-m="${mi}"][data-i="${ii}"]`);
+        const p = area.querySelector(`.ed-porc[data-m="${mi}"][data-i="${ii}"]`);
+        const k = area.querySelector(`.ed-kcal[data-m="${mi}"][data-i="${ii}"]`);
+        if (a) it.alimento = a.value.trim();
+        if (p) it.porcao = p.value.trim();
+        if (k) it.kcal = k.value.trim() !== "" ? Number(k.value) : null;
+        if (typeof it.kcal === "number") soma += it.kcal;
+      });
+      if (soma > 0) r.kcal_total = soma;
+    });
+    loading($("editMsg"), "Salvando...");
+    $("btnSaveEdit").disabled = true;
+    try {
+      await api("/api/diets/" + curDietId, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ dieta: nova }) });
+      curDietObj = nova;
+      await loadAll();
+      // atualiza referência do meta (mesma dieta recarregada)
+      const rec = diets.find((x) => x.id === curDietId);
+      if (rec) { curDietObj = rec.dieta; curDietMeta = rec; }
+      renderDiet(curDietObj, curDietMeta);
+    } catch (e) { setMsg($("editMsg"), e.message, "err"); $("btnSaveEdit").disabled = false; }
+  }
 
   function renderDiet(d, meta) {
     const area = $("printArea");
