@@ -355,10 +355,18 @@ não estiver presente no exame.
   "gordura_visceral": number|null,
   "agua_corporal_percent": number|null,
   "taxa_metabolica_basal_kcal": number|null,
+  "cintura_cm": number|null,
+  "quadril_cm": number|null,
   "observacoes": string|null
 }
 
-Para "data_exame", use o formato AAAA-MM-DD (data em que o exame foi feito). \
+Regras:
+- "data_exame" no formato AAAA-MM-DD (data em que o exame foi feito).
+- "percentual_gordura" é o % de gordura ATUAL medido; se o laudo só trouxer a \
+META de %G (e não o valor atual), deixe null.
+- "cintura_cm" e "quadril_cm" vêm da perimetria/circunferências, quando houver.
+- Extraia todos os campos presentes no documento, mesmo em laudos de dobras \
+cutâneas (protocolo Pollock) ou bioimpedância.
 Responda somente com o JSON."""
 
 

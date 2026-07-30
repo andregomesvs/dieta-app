@@ -327,31 +327,27 @@
     <div style="margin-top:8px; font-size:15px; color:var(--muted); line-height:1.55;">Envie um PDF de bioimpedância, um exame de sangue, ou digite os dados. Cada registro entra na Evolução.</div>
   </div>
 
-  <div class="seg-wrap" id="medModeWrap" style="margin-top:20px; display:inline-flex;">
-    <button class="seg active" data-mode="bio">Bioimpedância</button>
-    <button class="seg" data-mode="sangue">Exame de sangue</button>
-    <button class="seg" data-mode="manual">Manual</button>
+  <div style="margin-top:20px; display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+    <div>
+      <label class="dropzone" for="medBioInput" style="padding:24px 14px;">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#14735A" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="margin:0 auto;"><path d="M12 16V4"></path><path d="M8 8l4-4 4 4"></path><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"></path></svg>
+        <div class="t1" id="medBioTitle" style="font-size:14px;">Bioimpedância / avaliação (PDF)</div>
+        <div class="t2">peso, gordura, circunferências…</div>
+      </label>
+      <input id="medBioInput" type="file" accept="application/pdf" style="display:none;" />
+    </div>
+    <div>
+      <label class="dropzone" for="medBloodInput" style="padding:24px 14px;">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#C0392B" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="margin:0 auto;"><path d="M12 2s5 5.5 5 10a5 5 0 0 1-10 0c0-4.5 5-10 5-10z"></path></svg>
+        <div class="t1" id="medBloodTitle" style="font-size:14px;">Exame de sangue (PDF/imagem)</div>
+        <div class="t2">marcadores para a análise</div>
+      </label>
+      <input id="medBloodInput" type="file" accept="application/pdf,image/*" style="display:none;" />
+    </div>
   </div>
-
-  <div id="medBioZone" style="margin-top:14px;">
-    <label class="dropzone" for="medBioInput">
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#14735A" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="margin:0 auto;"><path d="M12 16V4"></path><path d="M8 8l4-4 4 4"></path><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"></path></svg>
-      <div class="t1" id="medBioTitle" style="font-size:14px;">Solte o PDF da bioimpedância</div>
-      <div class="t2">a IA lê os dados e a data do exame; confira abaixo e salve</div>
-    </label>
-    <input id="medBioInput" type="file" accept="application/pdf" style="display:none;" />
-    <div id="medBioMsg" class="msg"></div>
-  </div>
-
-  <div id="medBloodZone" class="hidden" style="margin-top:14px;">
-    <label class="dropzone" for="medBloodInput">
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#C0392B" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="margin:0 auto;"><path d="M12 2s5 5.5 5 10a5 5 0 0 1-10 0c0-4.5 5-10 5-10z"></path></svg>
-      <div class="t1" id="medBloodTitle" style="font-size:14px;">Solte o PDF ou imagem do exame de sangue</div>
-      <div class="t2">os marcadores são salvos e aparecem na aba Análise</div>
-    </label>
-    <input id="medBloodInput" type="file" accept="application/pdf,image/*" style="display:none;" />
-    <div id="medBloodMsg" class="msg"></div>
-  </div>
+  <div style="font-size:12.5px; color:var(--muted3); margin-top:8px;">Anexe um ou os dois (ou pule e digite manualmente). Depois toque em <b>Gerar análise</b> — a IA preenche os campos e monta a análise.</div>
+  <button id="btnGerarAnalise" class="btn btn-primary" style="margin-top:12px; width:100%; height:48px; justify-content:center;">Gerar análise dos documentos</button>
+  <div id="medDocMsg" class="msg"></div>
 
   <div class="card" id="medManualCard" style="margin-top:14px;">
     <div class="form-grid">
@@ -1191,24 +1187,14 @@
   }
 
   // ---------- MEDIÇÃO ----------
-  function setMedMode(mode) {
-    $("medModeWrap").querySelectorAll(".seg").forEach((b) => b.classList.toggle("active", b.getAttribute("data-mode") === mode));
-    $("medBioZone").classList.toggle("hidden", mode !== "bio");
-    $("medBloodZone").classList.toggle("hidden", mode !== "sangue");
-    $("medManualCard").classList.toggle("hidden", mode === "sangue");
-    setMsg($("medMsg"), "", "");
-  }
-  $("medModeWrap").querySelectorAll(".seg").forEach((b) =>
-    b.onclick = () => setMedMode(b.getAttribute("data-mode")));
-
   function openMedicao() {
     $("med_data").value = new Date().toISOString().slice(0, 10);
     ["peso_kg","percentual_gordura","massa_magra_kg","gordura_visceral","cintura_cm","quadril_cm"]
       .forEach((k) => { $("med_" + k).value = ""; });
-    $("medBioTitle").textContent = "Solte o PDF da bioimpedância";
-    $("medBloodTitle").textContent = "Solte o PDF ou imagem do exame de sangue";
-    setMsg($("medBioMsg"), "", ""); setMsg($("medBloodMsg"), "", "");
-    setMedMode("bio");
+    $("medBioInput").value = ""; $("medBloodInput").value = "";
+    $("medBioTitle").textContent = "Bioimpedância / avaliação (PDF)";
+    $("medBloodTitle").textContent = "Exame de sangue (PDF/imagem)";
+    setMsg($("medDocMsg"), "", ""); setMsg($("medMsg"), "", "");
     renderMedList();
     showView("medicao");
   }
@@ -1223,30 +1209,56 @@
     return null;
   }
 
-  // bioimpedância -> preenche o formulário (com a data do exame)
-  $("medBioInput").onchange = async () => {
+  // apenas mostra o nome do arquivo escolhido (processa só no botão)
+  $("medBioInput").onchange = () => {
     const f = $("medBioInput").files[0];
-    if (!f) return;
-    $("medBioTitle").textContent = f.name;
-    loading($("medBioMsg"), "Lendo a bioimpedância...");
-    try {
-      const fd = new FormData(); fd.append("file", f);
-      const res = await api("/api/analyze-pdf", { method: "POST", body: fd });
-      const d = res.data || {};
-      ["peso_kg","percentual_gordura","massa_magra_kg","gordura_visceral"]
-        .forEach((k) => { if (d[k] != null) $("med_" + k).value = d[k]; });
-      const dt = normalizeDate(d.data_exame);
-      if (dt) $("med_data").value = dt;
-      setMsg($("medBioMsg"), "Dados extraídos" + (dt ? " · exame de " + dt.split("-").reverse().join("/") : "") + ". Confira abaixo e salve.", "ok");
-    } catch (e) { setMsg($("medBioMsg"), e.message, "err"); }
+    if (f) $("medBioTitle").textContent = f.name;
+  };
+  $("medBloodInput").onchange = () => {
+    const f = $("medBloodInput").files[0];
+    if (f) $("medBloodTitle").textContent = f.name;
   };
 
-  // exame de sangue -> salva marcadores (aparece na Análise)
-  $("medBloodInput").onchange = async () => {
-    const f = $("medBloodInput").files[0];
-    if (!f) return;
-    $("medBloodTitle").textContent = f.name;
-    await handleBloodFile(f, $("medBloodMsg"));
+  // botão: processa os documentos anexados (bio e/ou sangue) e gera a análise
+  $("btnGerarAnalise").onclick = async () => {
+    const bio = $("medBioInput").files[0];
+    const sangue = $("medBloodInput").files[0];
+    if (!bio && !sangue) { setMsg($("medDocMsg"), "Anexe um PDF de bioimpedância e/ou de exame de sangue primeiro.", "err"); return; }
+    loading($("medDocMsg"), "Lendo documento(s) com IA...");
+    $("btnGerarAnalise").disabled = true;
+    const partes = [];
+    try {
+      if (bio) {
+        const fd = new FormData(); fd.append("file", bio);
+        const res = await api("/api/analyze-pdf", { method: "POST", body: fd });
+        const d = res.data || {};
+        ["peso_kg","percentual_gordura","massa_magra_kg","gordura_visceral","cintura_cm","quadril_cm"]
+          .forEach((k) => { if (d[k] != null) $("med_" + k).value = d[k]; });
+        const dt = normalizeDate(d.data_exame);
+        if (dt) $("med_data").value = dt;
+        // guarda altura/idade no perfil (não têm campo na medição)
+        const perfilUpd = {};
+        ["nome","sexo","idade","altura_cm","imc"].forEach((k) => { if (d[k] != null) perfilUpd[k] = d[k]; });
+        if (Object.keys(perfilUpd).length) {
+          await api("/api/profile", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(perfilUpd) });
+          Object.assign(profile, perfilUpd);
+        }
+        partes.push("bioimpedância" + (dt ? " (" + dt.split("-").reverse().join("/") + ")" : "") + " preenchida abaixo");
+      }
+      if (sangue) {
+        const ok = await handleBloodFile(sangue, $("medDocMsg"));
+        if (ok) partes.push("marcadores de sangue salvos");
+      }
+      // gera a análise combinando o que já foi salvo
+      loading($("medDocMsg"), "Gerando análise com IA...");
+      try {
+        const a = await api("/api/health-analysis", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+        profile.analise = a;
+        partes.push("análise atualizada");
+      } catch (e) { /* análise pode falhar se faltar dado; segue */ }
+      setMsg($("medDocMsg"), "Pronto: " + partes.join(", ") + ". Revise os campos e toque em Salvar medição. Veja os destaques na aba Análise.", "ok");
+    } catch (e) { setMsg($("medDocMsg"), e.message, "err"); }
+    finally { $("btnGerarAnalise").disabled = false; }
   };
 
   function renderMedList() {
