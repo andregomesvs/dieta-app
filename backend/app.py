@@ -848,6 +848,7 @@ def cron_send_reminders():
             )
             if not dietas:
                 continue
+            diet_id = dietas[0].id
             dieta = (dietas[0].to_dict() or {}).get("dieta") or {}
             refeicoes = dieta.get("refeicoes") or []
             usuarios_ok += 1
@@ -865,13 +866,13 @@ def cron_send_reminders():
                     continue
                 alvo = agora.replace(hour=hm[0], minute=hm[1], second=0, microsecond=0)
                 delta_min = (agora - alvo).total_seconds() / 60.0
-                chave = f"{idx}"
+                chave = f"{diet_id}:{idx}"  # por dieta+refeição (nova dieta não colide)
                 if 0 <= delta_min <= REMINDER_WINDOW_MIN and chave not in ja_enviados:
                     try:
                         botoes = {"inline_keyboard": [[
-                            {"text": "✅ Cumpri", "callback_data": f"ok|{hoje}|{idx}"},
-                            {"text": "🔄 Outra coisa", "callback_data": f"other|{hoje}|{idx}"},
-                            {"text": "⏭️ Pulei", "callback_data": f"skip|{hoje}|{idx}"},
+                            {"text": "✅ Cumpri", "callback_data": f"ok|{hoje}|{idx}|{diet_id}"},
+                            {"text": "🔄 Outra coisa", "callback_data": f"other|{hoje}|{idx}|{diet_id}"},
+                            {"text": "⏭️ Pulei", "callback_data": f"skip|{hoje}|{idx}|{diet_id}"},
                         ]]}
                         tg_send(chat_id, format_meal_message(ref), reply_markup=botoes)
                         ja_enviados.add(chave)
@@ -921,42 +922,59 @@ def update_consumo(uid, dia, idx, entry):
     return data["total_kcal"]
 
 
-def set_pending(uid, dia, idx):
-    db().collection("usuarios").document(uid).set(
-        {"tg_pendente": {"data": dia, "idx": idx}}, merge=True)
+def add_pending(uid, dia, idx, diet_id):
+    """Guarda um pendente por refeição (lista), sem sobrescrever outros."""
+    ref = db().collection("usuarios").document(uid)
+    lst = (ref.get().to_dict() or {}).get("tg_pendentes") or []
+    lst = [p for p in lst if not (p.get("data") == dia and p.get("idx") == idx and p.get("diet_id") == diet_id)]
+    lst.append({"data": dia, "idx": idx, "diet_id": diet_id})
+    ref.set({"tg_pendentes": lst[-6:]}, merge=True)
 
 
-def get_pending(uid):
-    return (db().collection("usuarios").document(uid).get().to_dict() or {}).get("tg_pendente")
+def peek_pending(uid):
+    lst = (db().collection("usuarios").document(uid).get().to_dict() or {}).get("tg_pendentes") or []
+    return lst[-1] if lst else None
 
 
-def clear_pending(uid):
-    db().collection("usuarios").document(uid).set(
-        {"tg_pendente": firestore.DELETE_FIELD}, merge=True)
+def remove_pending(uid, dia, idx, diet_id):
+    ref = db().collection("usuarios").document(uid)
+    lst = (ref.get().to_dict() or {}).get("tg_pendentes") or []
+    lst = [p for p in lst if not (p.get("data") == dia and p.get("idx") == idx and p.get("diet_id") == diet_id)]
+    ref.set({"tg_pendentes": lst}, merge=True)
+
+
+def diet_by_id(uid, diet_id):
+    """Carrega a dieta pelo id; se faltar/não existir, usa a mais recente."""
+    if diet_id:
+        doc = db().collection("usuarios").document(uid).collection("dietas").document(diet_id).get()
+        if doc.exists:
+            return (doc.to_dict() or {}).get("dieta") or {}
+    return latest_diet(uid) or {}
+
+
+def _meal_from(uid, diet_id, idx):
+    refs = (diet_by_id(uid, diet_id) or {}).get("refeicoes") or []
+    return refs[idx] if 0 <= idx < len(refs) else {}
 
 
 def estimate_calories(text):
+    """Estima calorias. Retorna {ok, kcal_total, itens} ou {ok: False, erro}."""
     prompt = ("Estime as calorias do que a pessoa comeu. Responda APENAS JSON "
               '{"itens":[{"alimento":string,"kcal":number}],"kcal_total":number}. '
               f"Comida: {text}")
     try:
         resp = gemini().generate_content(prompt)
         parsed = _safe_json((resp.text or "").strip())
-        if not parsed.get("kcal_total"):
-            parsed["kcal_total"] = sum((i.get("kcal") or 0) for i in parsed.get("itens", []))
-        return parsed
+        if parsed.get("_parse_error"):
+            return {"ok": False, "erro": "resposta não estruturada"}
+        kcal = parsed.get("kcal_total")
+        if not kcal:
+            kcal = sum((i.get("kcal") or 0) for i in parsed.get("itens", []))
+        if not kcal or kcal <= 0:
+            return {"ok": False, "erro": "sem estimativa"}
+        return {"ok": True, "kcal_total": int(kcal), "itens": parsed.get("itens", [])}
     except Exception as e:  # noqa: BLE001
-        return {"kcal_total": 0, "erro": str(e)}
-
-
-def _meal_name(uid, idx):
-    refs = (latest_diet(uid) or {}).get("refeicoes") or []
-    return refs[idx].get("nome", "Refeição") if 0 <= idx < len(refs) else "Refeição"
-
-
-def _meal_kcal(uid, idx):
-    refs = (latest_diet(uid) or {}).get("refeicoes") or []
-    return (refs[idx].get("kcal_total") or 0) if 0 <= idx < len(refs) else 0
+        return {"ok": False, "erro": str(e)}
 
 
 def handle_callback(cq):
@@ -964,16 +982,18 @@ def handle_callback(cq):
     chat = cq.get("message", {}).get("chat", {}).get("id")
     mid = cq.get("message", {}).get("message_id")
     parts = (cq.get("data") or "").split("|")
-    if len(parts) != 3:
+    if len(parts) < 3:
         tg_answer_callback(cid); return
     action, dia, idx = parts[0], parts[1], int(parts[2])
+    diet_id = parts[3] if len(parts) > 3 else None
     uid = find_uid_by_chat(chat)
     if not uid:
         tg_answer_callback(cid, "Conta não encontrada."); return
-    nome = _meal_name(uid, idx)
+    ref = _meal_from(uid, diet_id, idx)  # a refeição da dieta CERTA (não a mais recente)
+    nome = ref.get("nome", "Refeição")
 
     if action == "ok":
-        kcal = _meal_kcal(uid, idx)
+        kcal = ref.get("kcal_total") or 0
         total = update_consumo(uid, dia, idx, {"nome": nome, "status": "cumpriu", "kcal": kcal})
         tg_answer_callback(cid, "Registrado ✅")
         tg_remove_keyboard(chat, mid)
@@ -984,7 +1004,7 @@ def handle_callback(cq):
         tg_remove_keyboard(chat, mid)
         tg_send(chat, f"⏭️ <b>{_esc(nome)}</b> marcada como pulada. Total de hoje: <b>{total} kcal</b>.")
     elif action == "other":
-        set_pending(uid, dia, idx)
+        add_pending(uid, dia, idx, diet_id)
         tg_answer_callback(cid, "Me conta o que comeu")
         tg_remove_keyboard(chat, mid)
         tg_send(chat, f"O que você comeu no lugar de <b>{_esc(nome)}</b>? Escreva aqui que eu calculo as calorias.")
@@ -1014,16 +1034,29 @@ def handle_message(msg):
     uid = find_uid_by_chat(chat)
     if not uid:
         return
-    pend = get_pending(uid)
+    pend = peek_pending(uid)
     if not pend:
         tg_send(chat, "Recebi 👍 Quando chegar o horário de uma refeição, use os botões para registrar (Cumpri / Outra coisa / Pulei).")
         return
-    est = estimate_calories(text)
-    kcal = int(est.get("kcal_total") or 0)
-    idx, dia = pend.get("idx"), pend.get("data")
-    nome = _meal_name(uid, idx)
+
+    idx, dia, diet_id = pend.get("idx"), pend.get("data"), pend.get("diet_id")
+    nome = _meal_from(uid, diet_id, idx).get("nome", "Refeição")
+
+    # atalho: usuário mandou só as calorias (ex.: "520" ou "520 kcal")
+    mnum = re.match(r"^\s*(\d{1,5})\s*(kcal|cal)?\s*$", text, re.IGNORECASE)
+    if mnum:
+        kcal = int(mnum.group(1))
+    else:
+        est = estimate_calories(text)
+        if not est.get("ok"):
+            # NÃO registra 0 kcal em caso de falha — mantém pendente e pede de novo
+            tg_send(chat, "Não consegui calcular agora 😕. Tente escrever de outro jeito "
+                          "(ex.: <i>2 pães com queijo e 1 café</i>) ou me diga só as calorias, tipo <b>520 kcal</b>.")
+            return
+        kcal = int(est.get("kcal_total") or 0)
+
     total = update_consumo(uid, dia, idx, {"nome": nome, "status": "substituiu", "itens": text, "kcal": kcal})
-    clear_pending(uid)
+    remove_pending(uid, dia, idx, diet_id)
     tg_send(chat, f"Anotei no lugar de <b>{_esc(nome)}</b>: “{_esc(text)}” ≈ <b>{kcal} kcal</b>.\nTotal de hoje: <b>{total} kcal</b>.")
 
 
