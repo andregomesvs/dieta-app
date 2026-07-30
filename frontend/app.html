@@ -23,6 +23,7 @@
         <span class="email" id="userEmail"></span>
         <span class="avatar" id="userAvatar"></span>
       </div>
+      <button id="btnBiblioteca" class="btn btn-ghost hidden">Biblioteca</button>
       <button id="btnAdmin" class="btn btn-ghost hidden">Admin</button>
       <button id="btnLogout" class="btn btn-ghost">Sair</button>
     </div>
@@ -433,6 +434,37 @@
   <div id="adminDetail" style="margin-top:14px;"></div>
 </section>
 
+<!-- ===================== BIBLIOTECA DE EXERCÍCIOS (equipe) ===================== -->
+<section id="view-biblioteca" class="wrap hidden">
+  <div style="display:flex; align-items:center; gap:10px;">
+    <button id="btnBackBiblio" class="btn btn-ghost" style="padding:0 13px 0 10px;">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:-2px; margin-right:4px;"><path d="M15 6l-6 6 6 6"></path></svg>
+      Voltar
+    </button>
+    <div style="flex:1;"></div>
+    <span class="badge" style="background:rgba(20,115,90,.09); color:var(--green); border-color:transparent;">Equipe</span>
+  </div>
+  <div style="margin-top:22px; display:flex; align-items:flex-end; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+    <div>
+      <div class="serif" style="font-size:34px; line-height:1.1;">Biblioteca de exercícios</div>
+      <div id="biblioSub" style="margin-top:6px; font-size:15px; color:var(--muted);">Exercícios curados. Só os aprovados poderão ser usados em treinos.</div>
+    </div>
+    <button id="btnNovoEx" class="btn btn-primary">+ Novo exercício</button>
+  </div>
+  <div style="margin-top:14px; display:flex; gap:8px; flex-wrap:wrap;">
+    <input id="biblioBusca" class="field" placeholder="Buscar por nome, grupo, equipamento…" style="flex:1; min-width:200px;" />
+    <select id="biblioStatus" class="field" style="width:160px;">
+      <option value="">Todos os status</option>
+      <option value="aprovado">Aprovados</option>
+      <option value="rascunho">Rascunhos</option>
+      <option value="inativo">Inativos</option>
+    </select>
+  </div>
+  <div id="biblioMsg" class="msg"></div>
+  <div id="biblioList" style="margin-top:12px; display:grid; gap:8px;"></div>
+  <div id="biblioForm" class="hidden" style="margin-top:12px;"></div>
+</section>
+
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
   import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
@@ -447,7 +479,8 @@
   const EXTRA_FIELDS = ["objetivo","rotina_treino","rotina_alimentar","restricoes"];
 
   let token = null, profile = {}, diets = [], medicoes = [], consumoHoje = {};
-  let step = 1, metric = "peso", selectedPrazo = "mensal", bloodData = null, isAdmin = false;
+  let step = 1, metric = "peso", selectedPrazo = "mensal", bloodData = null, isAdmin = false, isStaff = false;
+  let exercicios = [];
 
   onAuthStateChanged(auth, async (user) => {
     if (!user) { window.location.href = "/"; return; }
@@ -455,8 +488,12 @@
     $("userAvatar").textContent = (user.email || "?").slice(0, 2).toUpperCase();
     token = await user.getIdToken();
     await loadAll();
-    try { const meRes = await api("/api/me"); isAdmin = !!meRes.is_admin; } catch (_) { isAdmin = false; }
+    try {
+      const meRes = await api("/api/me");
+      isAdmin = !!meRes.is_admin; isStaff = !!meRes.is_staff;
+    } catch (_) { isAdmin = false; isStaff = false; }
     $("btnAdmin").classList.toggle("hidden", !isAdmin);
+    $("btnBiblioteca").classList.toggle("hidden", !isStaff);
     showView("home");
   });
 
@@ -506,7 +543,7 @@
 
   // ---------- navegação ----------
   function showView(name) {
-    ["home","form","dieta","analise","medicao","meta","admin"].forEach((v) => $("view-" + v).classList.toggle("hidden", v !== name));
+    ["home","form","dieta","analise","medicao","meta","admin","biblioteca"].forEach((v) => $("view-" + v).classList.toggle("hidden", v !== name));
     if (name === "home") renderHome();
     window.scrollTo(0, 0);
   }
@@ -522,6 +559,117 @@
   $("btnBackMeta").onclick = () => showView("home");
   $("btnAdmin").onclick = () => openAdmin();
   $("btnBackAdmin").onclick = () => showView("home");
+  $("btnBiblioteca").onclick = () => openBiblioteca();
+  $("btnBackBiblio").onclick = () => showView("home");
+  $("btnNovoEx").onclick = () => openExForm(null);
+  $("biblioBusca").oninput = () => renderBiblioList();
+  $("biblioStatus").onchange = () => renderBiblioList();
+
+  // ---------- BIBLIOTECA DE EXERCÍCIOS ----------
+  async function openBiblioteca() {
+    $("biblioForm").classList.add("hidden");
+    $("biblioList").classList.remove("hidden");
+    loading($("biblioMsg"), "Carregando biblioteca...");
+    showView("biblioteca");
+    try {
+      exercicios = await api("/api/exercicios");
+      setMsg($("biblioMsg"), "", "");
+      renderBiblioList();
+    } catch (e) { setMsg($("biblioMsg"), e.message, "err"); }
+  }
+
+  function renderBiblioList() {
+    const q = ($("biblioBusca").value || "").toLowerCase();
+    const st = $("biblioStatus").value;
+    const stBg = { aprovado: "bg-bom", rascunho: "bg-atencao", inativo: "" };
+    const lista = exercicios.filter((e) => {
+      if (st && e.status !== st) return false;
+      if (!q) return true;
+      return [e.nome, e.grupo_muscular, e.equipamento, (e.aliases || []).join(" ")]
+        .join(" ").toLowerCase().includes(q);
+    });
+    $("biblioSub").textContent = `${exercicios.length} exercício(s) · ${exercicios.filter((e) => e.status === "aprovado").length} aprovado(s)`;
+    if (!lista.length) { $("biblioList").innerHTML = `<div class="empty">Nenhum exercício ${st ? "com esse status" : "ainda"}. Toque em “Novo exercício”.</div>`; return; }
+    $("biblioList").innerHTML = lista.map((e) => `
+      <div class="hist-card" data-id="${e.id}" style="cursor:default;">
+        <div style="min-width:0; flex:1;">
+          <div class="t">${esc(e.nome || "")} ${e.status !== "aprovado" ? `<span class="an-badge ${stBg[e.status] || ""}" style="margin-left:4px;">${e.status}</span>` : ""}</div>
+          <div class="d" style="font-family:'Plus Jakarta Sans';">${esc(e.grupo_muscular || "—")}${e.equipamento ? " · " + esc(e.equipamento) : ""}${e.dificuldade ? " · " + esc(e.dificuldade) : ""} · v${e.versao || 1}</div>
+        </div>
+        <button class="chip-sm ex-editar" data-id="${e.id}">Editar</button>
+        ${e.status === "aprovado"
+          ? `<button class="chip-sm ex-inativar" data-id="${e.id}">Inativar</button>`
+          : `<button class="chip-sm ex-aprovar" data-id="${e.id}">Aprovar</button>`}
+      </div>`).join("");
+    $("biblioList").querySelectorAll(".ex-editar").forEach((b) => b.onclick = () => openExForm(exercicios.find((x) => x.id === b.dataset.id)));
+    $("biblioList").querySelectorAll(".ex-aprovar").forEach((b) => b.onclick = () => setExStatus(b.dataset.id, "aprovado"));
+    $("biblioList").querySelectorAll(".ex-inativar").forEach((b) => b.onclick = () => setExStatus(b.dataset.id, "inativo"));
+  }
+
+  async function setExStatus(id, status) {
+    try {
+      await api("/api/exercicios/" + id + "/status", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status }) });
+      exercicios = await api("/api/exercicios");
+      renderBiblioList();
+    } catch (e) { setMsg($("biblioMsg"), e.message, "err"); }
+  }
+
+  function openExForm(ex) {
+    const e = ex || {};
+    $("biblioList").classList.add("hidden");
+    const F = $("biblioForm");
+    F.classList.remove("hidden");
+    const val = (k) => esc(e[k] != null ? e[k] : "");
+    const lst = (k) => esc((e[k] || []).join(", "));
+    const opt = (v, sel) => `<option value="${v}" ${sel === v ? "selected" : ""}>${v}</option>`;
+    F.innerHTML = `<div class="card">
+      <div class="serif" style="font-size:22px;">${ex ? "Editar exercício" : "Novo exercício"}</div>
+      <div class="form-grid" style="margin-top:14px;">
+        <label class="col-span"><span class="flabel">Nome *</span><input id="ex_nome" class="field" value="${val("nome")}" /></label>
+        <label class="col-span"><span class="flabel">Aliases (separados por vírgula)</span><input id="ex_aliases" class="field" value="${lst("aliases")}" /></label>
+        <label><span class="flabel">Grupo muscular</span><input id="ex_grupo_muscular" class="field" value="${val("grupo_muscular")}" placeholder="ex.: peito" /></label>
+        <label><span class="flabel">Padrão de movimento</span><input id="ex_padrao_movimento" class="field" value="${val("padrao_movimento")}" placeholder="ex.: empurrar horizontal" /></label>
+        <label><span class="flabel">Equipamento</span><input id="ex_equipamento" class="field" value="${val("equipamento")}" placeholder="ex.: halteres" /></label>
+        <label><span class="flabel">Dificuldade</span><select id="ex_dificuldade" class="field">
+          ${opt("iniciante", e.dificuldade)}${opt("intermediario", e.dificuldade)}${opt("avancado", e.dificuldade)}</select></label>
+        <label class="col-span"><span class="flabel">Instruções</span><textarea id="ex_instrucoes" class="field" rows="3">${val("instrucoes")}</textarea></label>
+        <label class="col-span"><span class="flabel">Mídia (URL)</span><input id="ex_midia_url" class="field" value="${val("midia_url")}" placeholder="https://…" /></label>
+        <label class="col-span"><span class="flabel">Substituições permitidas (nomes, por vírgula)</span><input id="ex_substituicoes" class="field" value="${lst("substituicoes")}" /></label>
+        <label class="col-span"><span class="flabel">Contraindicações / restrições (preenchido pela governança)</span><textarea id="ex_contraindicacoes" class="field" rows="2">${val("contraindicacoes")}</textarea></label>
+      </div>
+      <div style="margin-top:14px; display:flex; gap:10px;">
+        <button id="ex_cancel" class="btn btn-ghost" style="height:46px;">Cancelar</button>
+        <button id="ex_salvar" class="btn btn-primary" style="flex:1; height:46px; justify-content:center;">${ex ? "Salvar alterações" : "Criar exercício"}</button>
+      </div>
+      <div id="ex_msg" class="msg"></div>
+    </div>`;
+    $("ex_cancel").onclick = () => { F.classList.add("hidden"); $("biblioList").classList.remove("hidden"); };
+    $("ex_salvar").onclick = () => saveEx(ex ? ex.id : null);
+  }
+
+  async function saveEx(id) {
+    const g = (k) => $("ex_" + k).value.trim();
+    const nome = g("nome");
+    if (!nome) { setMsg($("ex_msg"), "Nome é obrigatório.", "err"); return; }
+    const body = {
+      nome, aliases: g("aliases"), grupo_muscular: g("grupo_muscular"),
+      padrao_movimento: g("padrao_movimento"), equipamento: g("equipamento"),
+      dificuldade: g("dificuldade"), instrucoes: g("instrucoes"),
+      midia_url: g("midia_url"), substituicoes: g("substituicoes"),
+      contraindicacoes: g("contraindicacoes"),
+    };
+    loading($("ex_msg"), "Salvando...");
+    $("ex_salvar").disabled = true;
+    try {
+      if (id) await api("/api/exercicios/" + id, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      else await api("/api/exercicios", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      exercicios = await api("/api/exercicios");
+      $("biblioForm").classList.add("hidden");
+      $("biblioList").classList.remove("hidden");
+      renderBiblioList();
+    } catch (e) { setMsg($("ex_msg"), e.message, "err"); }
+    finally { $("ex_salvar").disabled = false; }
+  }
 
   // ---------- ADMIN (somente leitura) ----------
   async function openAdmin() {

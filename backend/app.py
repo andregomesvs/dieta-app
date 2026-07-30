@@ -53,6 +53,9 @@ FIREBASE_PROJECT_ID = os.environ.get("FIREBASE_PROJECT_ID", "")
 # Sem padrão embutido: defina ADMIN_EMAILS no ambiente (ex.: no Render).
 ADMIN_EMAILS = {e.strip().lower() for e in os.environ.get(
     "ADMIN_EMAILS", "").split(",") if e.strip()}
+# E-mails de personal trainers credenciados da plataforma (papel 'personal').
+PERSONAL_EMAILS = {e.strip().lower() for e in os.environ.get(
+    "PERSONAL_EMAILS", "").split(",") if e.strip()}
 
 # Tamanho máximo de upload (10 MB) e tipos aceitos em documentos.
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
@@ -306,6 +309,30 @@ def require_admin(f):
             return jsonify({"error": f"Token inválido: {e}"}), 401
         if (g.email or "").lower() not in ADMIN_EMAILS:
             return jsonify({"error": "Acesso restrito"}), 403
+        return f(*args, **kwargs)
+
+    return wrapper
+
+
+def require_staff(f):
+    """Permite admin OU personal trainer (para gerir a biblioteca de treino)."""
+
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        header = request.headers.get("Authorization", "")
+        if not header.startswith("Bearer "):
+            return jsonify({"error": "Token ausente"}), 401
+        if not firebase_admin._apps:
+            init_firebase()
+        try:
+            decoded = fb_auth.verify_id_token(header.split(" ", 1)[1])
+            g.uid = decoded["uid"]
+            g.email = decoded.get("email")
+        except Exception as e:  # noqa: BLE001
+            return jsonify({"error": f"Token inválido: {e}"}), 401
+        em = (g.email or "").lower()
+        if em not in ADMIN_EMAILS and em not in PERSONAL_EMAILS:
+            return jsonify({"error": "Acesso restrito à equipe"}), 403
         return f(*args, **kwargs)
 
     return wrapper
@@ -1185,7 +1212,100 @@ def estimate_kcal_route():
 @app.route("/api/me", methods=["GET"])
 @require_auth
 def me():
-    return jsonify({"email": g.email, "is_admin": (g.email or "").lower() in ADMIN_EMAILS})
+    em = (g.email or "").lower()
+    return jsonify({"email": g.email,
+                    "is_admin": em in ADMIN_EMAILS,
+                    "is_personal": em in PERSONAL_EMAILS,
+                    "is_staff": em in ADMIN_EMAILS or em in PERSONAL_EMAILS})
+
+
+# ---------------------------------------------------------------------------
+# Biblioteca de exercícios (RF-09) — gerida por admin/personal
+# ---------------------------------------------------------------------------
+EXERCICIO_CAMPOS = [
+    "nome", "aliases", "grupo_muscular", "padrao_movimento", "equipamento",
+    "dificuldade", "instrucoes", "midia_url", "substituicoes",
+    "contraindicacoes", "status",
+]
+_STATUS_EXERCICIO = {"rascunho", "aprovado", "inativo"}
+
+
+def _clean_exercicio(data):
+    """Normaliza o payload do exercício (allowlist de campos)."""
+    out = {}
+    for c in EXERCICIO_CAMPOS:
+        if c in data:
+            out[c] = data[c]
+    # listas
+    for lc in ("aliases", "substituicoes"):
+        v = out.get(lc)
+        if isinstance(v, str):
+            out[lc] = [s.strip() for s in v.split(",") if s.strip()]
+        elif not isinstance(v, list):
+            out[lc] = []
+    if out.get("status") not in _STATUS_EXERCICIO:
+        out["status"] = "rascunho"
+    return out
+
+
+@app.route("/api/exercicios", methods=["GET"])
+@require_staff
+def exercicios_list():
+    docs = db().collection("exercicios").order_by("nome").limit(500).stream()
+    out = []
+    for d in docs:
+        item = d.to_dict() or {}
+        item["id"] = d.id
+        out.append(item)
+    return jsonify(out)
+
+
+@app.route("/api/exercicios", methods=["POST"])
+@require_staff
+def exercicios_create():
+    data = _clean_exercicio(request.get_json(silent=True) or {})
+    if not data.get("nome"):
+        return jsonify({"error": "Nome é obrigatório."}), 400
+    agora = datetime.datetime.utcnow().isoformat()
+    data.update({"versao": 1, "criado_por": g.email, "criado_em": agora,
+                 "atualizado_por": g.email, "atualizado_em": agora})
+    ref = db().collection("exercicios").add(data)
+    data["id"] = ref[1].id
+    return jsonify(data)
+
+
+@app.route("/api/exercicios/<eid>", methods=["PUT"])
+@require_staff
+def exercicios_update(eid):
+    ref = db().collection("exercicios").document(eid)
+    atual = ref.get()
+    if not atual.exists:
+        return jsonify({"error": "Exercício não encontrado."}), 404
+    prev = atual.to_dict() or {}
+    # snapshot da versão anterior (histórico)
+    ref.collection("versoes").document(str(prev.get("versao", 1))).set(prev)
+    data = _clean_exercicio(request.get_json(silent=True) or {})
+    data["versao"] = int(prev.get("versao", 1)) + 1
+    data["atualizado_por"] = g.email
+    data["atualizado_em"] = datetime.datetime.utcnow().isoformat()
+    ref.set(data, merge=True)
+    out = ref.get().to_dict() or {}
+    out["id"] = eid
+    return jsonify(out)
+
+
+@app.route("/api/exercicios/<eid>/status", methods=["POST"])
+@require_staff
+def exercicios_status(eid):
+    novo = (request.get_json(silent=True) or {}).get("status")
+    if novo not in _STATUS_EXERCICIO:
+        return jsonify({"error": "status inválido"}), 400
+    ref = db().collection("exercicios").document(eid)
+    if not ref.get().exists:
+        return jsonify({"error": "Exercício não encontrado."}), 404
+    ref.set({"status": novo, "atualizado_por": g.email,
+             "atualizado_em": datetime.datetime.utcnow().isoformat()}, merge=True)
+    return jsonify({"ok": True, "status": novo})
 
 
 @app.route("/api/admin/users", methods=["GET"])
