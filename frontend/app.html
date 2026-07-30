@@ -1081,11 +1081,20 @@
 
   // passo 4 — telegram (conectar via deep-link + testar)
   $("btnTgConnect").onclick = async () => {
-    loading($("tgMsg"), "Gerando link de conexão...");
+    loading($("tgMsg"), "Gerando código de conexão...");
     try {
       const res = await api("/api/telegram/link-code", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
-      setMsg($("tgMsg"), "Abrindo o Telegram... toque em <b>Iniciar</b> lá e volte para enviar o teste.", "ok");
-      window.open(res.link, "_blank");
+      const link = res.link, code = res.code;
+      $("tgMsg").className = "msg ok";
+      $("tgMsg").innerHTML =
+        `Conecte de um destes jeitos:<br>` +
+        `<b>1)</b> <a href="${link}" target="_blank" rel="noopener">Abrir @minhadietazbot</a> e tocar em <b>Iniciar</b>.<br>` +
+        `<b>2)</b> Se não abrir (ex.: Firefox sem o Telegram no PC): abra o Telegram no celular ou em ` +
+        `<a href="https://web.telegram.org/k/#@minhadietazbot" target="_blank" rel="noopener">web.telegram.org</a>, ` +
+        `procure <b>@minhadietazbot</b> e envie a mensagem:<br>` +
+        `<span class="mono" style="display:inline-block; margin-top:4px; padding:4px 10px; background:var(--soft); border-radius:8px;">/start ${code}</span><br>` +
+        `Depois volte aqui e toque em <b>Enviar teste</b>.`;
+      window.open(link, "_blank");
     } catch (e) { setMsg($("tgMsg"), e.message, "err"); }
   };
   $("btnTgTest").onclick = async () => {
