@@ -1337,7 +1337,7 @@ Devolva APENAS JSON válido:
   "dias_por_semana": number,
   "sessoes": [
     {
-      "dia": string,
+      "dia_semana": "seg"|"ter"|"qua"|"qui"|"sex"|"sab"|"dom",
       "foco": string,
       "exercicios": [
         {"exercicio_id": string, "series": number, "reps": string,
@@ -1347,8 +1347,14 @@ Devolva APENAS JSON válido:
   ],
   "observacoes": string
 }
-Distribua os exercícios pelos dias conforme o foco; séries, repetições e \
-intervalos coerentes com o nível informado. Use somente exercicio_id da lista."""
+Regras:
+- Crie exatamente 'dias_por_semana' sessões, cada uma num dia_semana diferente, \
+bem distribuídas na semana (evite dias seguidos quando possível).
+- Considere as modalidades já praticadas e o local de treino informados: se a \
+pessoa já treina algo intenso, ajuste volume para não sobrecarregar; adapte os \
+exercícios ao equipamento do local (casa, academia ou rua).
+- Séries, repetições e intervalos coerentes com o nível.
+- Use somente exercicio_id da lista fornecida; nunca invente exercícios."""
 
 
 LIB_SEED_SYSTEM = """Gere uma biblioteca de exercícios de treino comuns e seguros \
@@ -1401,11 +1407,19 @@ def treino_gerar():
     catalogo = [{"id": v["id"], "nome": v["nome"], "grupo": v["grupo_muscular"],
                  "equipamento": v["equipamento"], "padrao": v["padrao_movimento"]}
                 for v in aprovados.values()]
+    modalidades = d.get("modalidades") or []
+    if isinstance(modalidades, str):
+        modalidades = [modalidades]
+    local = d.get("local") or []
+    if isinstance(local, str):
+        local = [local]
     user_msg = (
         f"Objetivo: {d.get('objetivo', '')}\n"
-        f"Nível: {d.get('nivel', 'intermediario')}\n"
+        f"Nível: {d.get('nivel', 'basico')}\n"
         f"Dias por semana: {d.get('dias_por_semana', 3)}\n"
-        f"Equipamento disponível: {d.get('equipamento', 'academia completa')}\n\n"
+        f"Modalidades já praticadas (e tempo/frequência): "
+        f"{', '.join(modalidades) or 'nenhuma'}. {d.get('tempo_modalidade', '')}\n"
+        f"Onde vai treinar: {', '.join(local) or d.get('equipamento', 'academia')}\n\n"
         f"Exercícios aprovados disponíveis (use só estes id):\n"
         + json.dumps(catalogo, ensure_ascii=False)
     )
@@ -1430,6 +1444,15 @@ def treino_gerar():
     plano["descartados"] = descartados
     plano["aviso"] = ("Plano sugerido por IA a partir da biblioteca. É uma sugestão e "
                       "não substitui a orientação de um profissional de educação física.")
+    # duração de 30 dias
+    hoje_d = now_local().date()
+    plano["data_inicio"] = hoje_d.isoformat()
+    plano["data_fim"] = (hoje_d + datetime.timedelta(days=30)).isoformat()
+    # preferências informadas (para renovar mantendo contexto)
+    plano["prefs"] = {"objetivo": d.get("objetivo", ""), "nivel": d.get("nivel", "basico"),
+                      "dias_por_semana": d.get("dias_por_semana", 3),
+                      "modalidades": modalidades, "tempo_modalidade": d.get("tempo_modalidade", ""),
+                      "local": local}
     plano["criado_em"] = datetime.datetime.utcnow().isoformat()
     ref = db().collection("usuarios").document(g.uid).collection("treinos").add(plano)
     plano["id"] = ref[1].id
@@ -1458,12 +1481,29 @@ def treino_today():
     return jsonify(d)
 
 
+@app.route("/api/treino/semana", methods=["GET"])
+@require_auth
+def treino_semana():
+    """Check-ins da semana atual (segunda a domingo) para o calendário."""
+    hoje = now_local()
+    monday = hoje - datetime.timedelta(days=hoje.weekday())
+    base = db().collection("usuarios").document(g.uid).collection("treino_sessoes")
+    dias, checkins = [], {}
+    for i in range(7):
+        dt = (monday + datetime.timedelta(days=i)).strftime("%Y-%m-%d")
+        dias.append({"data": dt, "dow": i})
+        doc = base.document(dt).get().to_dict()
+        if doc:
+            checkins[dt] = doc
+    return jsonify({"hoje": hoje.strftime("%Y-%m-%d"), "dias": dias, "checkins": checkins})
+
+
 @app.route("/api/treino/registrar", methods=["POST"])
 @require_auth
 def treino_registrar():
-    """Marca/desmarca um exercício como feito na sessão de hoje."""
+    """Marca/desmarca um exercício como feito na sessão de um dia (default hoje)."""
     body = request.get_json(silent=True) or {}
-    dia = now_local().strftime("%Y-%m-%d")
+    dia = body.get("data") or now_local().strftime("%Y-%m-%d")
     ref = db().collection("usuarios").document(g.uid).collection("treino_sessoes").document(dia)
     data = ref.get().to_dict() or {"data": dia, "feitos": {}}
     data["sessao_idx"] = body.get("sessao_idx")
@@ -1483,9 +1523,9 @@ def treino_registrar():
 @app.route("/api/treino/finalizar", methods=["POST"])
 @require_auth
 def treino_finalizar():
-    """Finaliza a sessão de hoje (check-in do dia)."""
+    """Finaliza a sessão de um dia (check-in). Default hoje."""
     body = request.get_json(silent=True) or {}
-    dia = now_local().strftime("%Y-%m-%d")
+    dia = body.get("data") or now_local().strftime("%Y-%m-%d")
     ref = db().collection("usuarios").document(g.uid).collection("treino_sessoes").document(dia)
     data = ref.get().to_dict() or {"data": dia, "feitos": {}}
     data["sessao_idx"] = body.get("sessao_idx")

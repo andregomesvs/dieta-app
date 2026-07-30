@@ -612,123 +612,198 @@
     finally { $("btnSeedLib").disabled = false; }
   };
 
-  // ---------- TREINO (usuário: gerar + executar + finalizar) ----------
-  let treinoMeu = null, treinoHoje = {}, treinoSessaoSel = 0;
+  // ---------- TREINO (usuário: gerar + calendário + execução) ----------
+  const WD_KEYS = ["seg","ter","qua","qui","sex","sab","dom"];
+  const WD_LABEL = ["Seg","Ter","Qua","Qui","Sex","Sáb","Dom"];
+  let treinoMeu = null, treinoSemana = { dias: [], checkins: {} }, treinoView = "cal", detIdx = 0, detData = null;
+  let genModal = new Set(), genLocal = new Set();
+
   $("btnTreino").onclick = () => openTreinoUser();
-  $("btnBackTreino").onclick = () => showView("home");
+  $("btnBackTreino").onclick = () => { if (treinoView === "sessao") { treinoView = "cal"; renderTreino(); } else showView("home"); };
   $("btnGoBiblio").onclick = () => openBiblioteca();
+
+  function fmtBR(iso) { return iso && iso.length >= 10 ? iso.slice(8,10)+"/"+iso.slice(5,7)+"/"+iso.slice(0,4) : (iso || ""); }
+  function normWD(v) {
+    v = String(v || "").toLowerCase().replace(/[-\s].*/, "").trim();
+    const m = { segunda:"seg", terca:"ter", "terça":"ter", quarta:"qua", quinta:"qui", sexta:"sex", sabado:"sab", "sábado":"sab", domingo:"dom" };
+    if (WD_KEYS.includes(v)) return v;
+    return m[v] || null;
+  }
+  function sessaoDoDow(dow) {
+    const sess = (treinoMeu && treinoMeu.sessoes) || [];
+    for (let i = 0; i < sess.length; i++)
+      if (normWD(sess[i].dia_semana || sess[i].dia) === WD_KEYS[dow]) return { idx: i, s: sess[i] };
+    return null;
+  }
 
   async function openTreinoUser() {
     showView("treino");
     $("btnGoBiblio").classList.toggle("hidden", !isStaff);
+    treinoView = "cal";
     loading($("treinoMsg"), "Carregando seu treino...");
     try {
       treinoMeu = await api("/api/treino/meu");
-      treinoHoje = await api("/api/treino/today");
+      treinoSemana = await api("/api/treino/semana");
       setMsg($("treinoMsg"), "", "");
       renderTreino();
     } catch (e) { setMsg($("treinoMsg"), e.message, "err"); }
   }
+  async function reloadSemana() { try { treinoSemana = await api("/api/treino/semana"); } catch (_) {} }
 
   function renderTreino() {
     const has = treinoMeu && treinoMeu.sessoes && treinoMeu.sessoes.length;
-    if (!has) {
-      $("treinoBody").innerHTML = treinoGenFormHtml();
-      wireTreinoGen();
-      return;
-    }
-    const sessoes = treinoMeu.sessoes;
-    if (treinoSessaoSel >= sessoes.length) treinoSessaoSel = 0;
-    const s = sessoes[treinoSessaoSel] || {};
-    const feitos = treinoHoje.feitos || {};
-    const finalizado = !!treinoHoje.finalizado;
-    const totalEx = (s.exercicios || []).length;
-    const feitosCount = (s.exercicios || []).filter((_, i) => feitos[treinoSessaoSel + ":" + i]).length;
+    if (!has) { $("treinoBody").innerHTML = treinoGenFormHtml(); wireTreinoGen(); return; }
+    if (treinoView === "sessao") renderTreinoSession(); else renderTreinoCalendar();
+  }
 
+  function renderTreinoCalendar() {
+    const dias = treinoSemana.dias || [];
+    const checks = treinoSemana.checkins || {};
+    const hoje = treinoSemana.hoje || new Date().toISOString().slice(0, 10);
+    let agendadas = 0, feitas = 0;
+    dias.forEach((d) => { if (sessaoDoDow(d.dow)) { agendadas++; if ((checks[d.data] || {}).finalizado) feitas++; } });
+    const pct = agendadas ? Math.round((feitas / agendadas) * 100) : 0;
+    let renovar = "";
+    if (treinoMeu.data_fim) {
+      const faltam = Math.ceil((new Date(treinoMeu.data_fim) - new Date(hoje)) / 86400000);
+      if (faltam <= 3) renovar = `<button id="btnRenovar" class="btn btn-primary" style="height:36px;">${faltam < 0 ? "Renovar" : "Renovar (" + faltam + "d)"}</button>`;
+    }
     let html = `<div class="card">
-      <div class="row" style="justify-content:space-between;">
-        <div><div class="serif" style="font-size:22px;">${esc(treinoMeu.nome || "Treino")}</div>
-        <div style="font-size:12.5px; color:var(--muted3);">${esc(treinoMeu.objetivo || "")}${treinoMeu.nivel ? " · " + esc(treinoMeu.nivel) : ""}</div></div>
-        <button id="btnNovoTreino" class="btn btn-ghost" style="height:36px;">Gerar novo</button>
+      <div class="row" style="justify-content:space-between; gap:8px;">
+        <div style="min-width:0;"><div class="serif" style="font-size:22px;">${esc(treinoMeu.nome || "Treino")}</div>
+          <div style="font-size:12px; color:var(--muted3);">${esc(treinoMeu.objetivo || "")}${treinoMeu.nivel ? " · " + esc(treinoMeu.nivel) : ""}${treinoMeu.data_fim ? " · até " + fmtBR(treinoMeu.data_fim) : ""}</div></div>
+        <div style="display:flex; gap:6px;">${renovar}<button id="btnNovoTreino" class="btn btn-ghost" style="height:36px;">Novo</button></div>
       </div>
-      <div class="seg-wrap" style="margin-top:12px; display:inline-flex; flex-wrap:wrap;">
-        ${sessoes.map((x, i) => `<button class="seg ${i === treinoSessaoSel ? "active" : ""} tr-sesbtn" data-i="${i}">${esc(x.dia || x.foco || ("Sessão " + (i + 1)))}</button>`).join("")}
-      </div>`;
-    if (finalizado) html += `<div class="note" style="margin-top:12px;">✅ Treino de hoje finalizado (${feitosCount}/${totalEx}). Bom trabalho!</div>`;
-    html += `<div style="margin-top:12px; display:grid; gap:8px;">`;
-    (s.exercicios || []).forEach((ex, i) => {
-      const chave = treinoSessaoSel + ":" + i;
-      const done = !!feitos[chave];
-      html += `<div class="hoje-meal">
-        <div style="display:flex; align-items:center; gap:10px;">
-          <input type="checkbox" class="tr-check" data-i="${i}" ${done ? "checked" : ""} ${finalizado ? "disabled" : ""} style="width:20px; height:20px; accent-color:var(--green);" />
-          <div style="flex:1; min-width:0;">
-            <div style="font-size:14px; font-weight:600; ${done ? "color:var(--muted3); text-decoration:line-through;" : ""}">${esc(ex.nome || "")}</div>
-            <div style="font-size:12px; color:var(--muted2);">${ex.series ? ex.series + "x" : ""}${ex.reps ? esc(ex.reps) : ""}${ex.carga ? " · " + esc(ex.carga) : ""}${ex.intervalo_s ? " · desc. " + ex.intervalo_s + "s" : ""}</div>
-            ${ex.obs ? `<div style="font-size:11.5px; color:var(--muted3);">${esc(ex.obs)}</div>` : ""}
-          </div>
-        </div>
+      <div style="margin-top:14px; display:flex; align-items:center; gap:10px;">
+        <div class="track" style="flex:1;"><div class="fill" style="width:${pct}%;"></div></div>
+        <span class="mono" style="font-size:12.5px; color:var(--muted);">${feitas}/${agendadas} · ${pct}%</span>
+      </div>
+      <div style="margin-top:14px; display:grid; grid-template-columns:repeat(7,1fr); gap:6px;">`;
+    dias.forEach((d) => {
+      const sd = sessaoDoDow(d.dow);
+      const done = (checks[d.data] || {}).finalizado;
+      const passou = d.data < hoje, ehHoje = d.data === hoje;
+      let bg = "var(--soft)", bd = "var(--line)", cor = "var(--muted3)", txt = "—";
+      if (sd) {
+        if (done) { bg = "rgba(20,115,90,.12)"; bd = "rgba(20,115,90,.4)"; cor = "var(--green)"; txt = "✓ feito"; }
+        else if (passou) { bg = "rgba(192,57,43,.10)"; bd = "rgba(192,57,43,.35)"; cor = "var(--danger)"; txt = "não feito"; }
+        else { bg = "#fff"; bd = "var(--line2)"; cor = "#3C4340"; txt = esc(sd.s.foco || "treino"); }
+      }
+      html += `<div class="tr-day" data-dow="${d.dow}" data-date="${d.data}" style="cursor:${sd ? "pointer" : "default"}; border:1px solid ${bd}; background:${bg}; border-radius:12px; padding:8px 3px; text-align:center; ${ehHoje ? "box-shadow:0 0 0 2px rgba(20,115,90,.25);" : ""}">
+        <div style="font-size:11px; color:var(--muted3);">${WD_LABEL[d.dow]}</div>
+        <div class="mono" style="font-size:13px; margin:2px 0;">${d.data.slice(8, 10)}</div>
+        <div style="font-size:9.5px; color:${cor}; line-height:1.1; overflow:hidden;">${txt}</div>
       </div>`;
     });
-    html += `</div>`;
-    if (!finalizado) html += `<button id="btnFinalizarTreino" class="btn btn-primary" style="width:100%; height:48px; justify-content:center; margin-top:14px;">Finalizar treino (${feitosCount}/${totalEx})</button>`;
-    html += `<div class="disclaimer" style="margin-top:12px;">${esc(treinoMeu.aviso || "Plano sugerido por IA — não substitui um profissional de educação física.")}</div></div>`;
+    html += `</div>
+      <div style="font-size:11.5px; color:var(--muted3); margin-top:8px;">Toque num dia com treino para registrar. Verde = feito · vermelho = não feito.</div>
+      <div class="disclaimer" style="margin-top:12px;">${esc(treinoMeu.aviso || "Plano sugerido por IA — não substitui um profissional.")}</div></div>`;
     $("treinoBody").innerHTML = html;
-
-    document.querySelectorAll(".tr-sesbtn").forEach((b) => b.onclick = () => { treinoSessaoSel = +b.dataset.i; renderTreino(); });
-    document.querySelectorAll(".tr-check").forEach((c) => c.onchange = () => toggleEx(+c.dataset.i, c.checked));
-    const bf = $("btnFinalizarTreino"); if (bf) bf.onclick = finalizarTreino;
+    document.querySelectorAll(".tr-day").forEach((el) => {
+      const sd = sessaoDoDow(+el.dataset.dow);
+      if (sd) el.onclick = () => { detIdx = sd.idx; detData = el.dataset.date; treinoView = "sessao"; renderTreino(); window.scrollTo(0, 0); };
+    });
+    const br2 = $("btnRenovar"); if (br2) br2.onclick = renovarTreino;
     const bn = $("btnNovoTreino"); if (bn) bn.onclick = () => { treinoMeu = null; renderTreino(); };
   }
 
+  function renderTreinoSession() {
+    const s = treinoMeu.sessoes[detIdx] || {};
+    const chk = (treinoSemana.checkins || {})[detData] || {};
+    const feitos = chk.feitos || {};
+    const finalizado = !!chk.finalizado && chk.sessao_idx === detIdx;
+    const totalEx = (s.exercicios || []).length;
+    const feitosCount = (s.exercicios || []).filter((_, i) => feitos[detIdx + ":" + i]).length;
+    let html = `<div class="card">
+      <div class="row" style="justify-content:space-between;">
+        <div><div class="serif" style="font-size:22px;">${esc(s.foco || "Sessão")}</div>
+        <div style="font-size:12px; color:var(--muted3);">${fmtBR(detData)}</div></div>
+        <button id="btnVoltaCal" class="btn btn-ghost" style="height:36px;">← Calendário</button>
+      </div>`;
+    if (finalizado) html += `<div class="note" style="margin-top:12px;">✅ Finalizado (${feitosCount}/${totalEx}).</div>`;
+    html += `<div style="margin-top:12px; display:grid; gap:8px;">`;
+    (s.exercicios || []).forEach((ex, i) => {
+      const done = !!feitos[detIdx + ":" + i];
+      html += `<div class="hoje-meal"><div style="display:flex; align-items:center; gap:10px;">
+        <input type="checkbox" class="tr-check" data-i="${i}" ${done ? "checked" : ""} ${finalizado ? "disabled" : ""} style="width:20px; height:20px; accent-color:var(--green);" />
+        <div style="flex:1; min-width:0;">
+          <div style="font-size:14px; font-weight:600; ${done ? "color:var(--muted3); text-decoration:line-through;" : ""}">${esc(ex.nome || "")}</div>
+          <div style="font-size:12px; color:var(--muted2);">${ex.series ? ex.series + "x" : ""}${ex.reps ? esc(ex.reps) : ""}${ex.carga ? " · " + esc(ex.carga) : ""}${ex.intervalo_s ? " · desc. " + ex.intervalo_s + "s" : ""}</div>
+          ${ex.obs ? `<div style="font-size:11.5px; color:var(--muted3);">${esc(ex.obs)}</div>` : ""}
+        </div></div></div>`;
+    });
+    html += `</div>`;
+    if (!finalizado) html += `<button id="btnFinalizarTreino" class="btn btn-primary" style="width:100%; height:48px; justify-content:center; margin-top:14px;">Finalizar treino (${feitosCount}/${totalEx})</button>`;
+    html += `</div>`;
+    $("treinoBody").innerHTML = html;
+    $("btnVoltaCal").onclick = () => { treinoView = "cal"; renderTreino(); };
+    document.querySelectorAll(".tr-check").forEach((c) => c.onchange = () => toggleEx(+c.dataset.i, c.checked));
+    const bf = $("btnFinalizarTreino"); if (bf) bf.onclick = finalizarTreino;
+  }
+
+  async function toggleEx(i, feito) {
+    try {
+      await api("/api/treino/registrar", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chave: detIdx + ":" + i, feito, sessao_idx: detIdx, plano_id: treinoMeu.id, data: detData }) });
+      await reloadSemana(); renderTreino();
+    } catch (e) { setMsg($("treinoMsg"), e.message, "err"); }
+  }
+  async function finalizarTreino() {
+    const total = (treinoMeu.sessoes[detIdx].exercicios || []).length;
+    loading($("treinoMsg"), "Finalizando...");
+    try {
+      await api("/api/treino/finalizar", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessao_idx: detIdx, plano_id: treinoMeu.id, total_exercicios: total, data: detData }) });
+      await reloadSemana();
+      setMsg($("treinoMsg"), "Treino finalizado! Check-in registrado.", "ok");
+      treinoView = "cal"; renderTreino();
+    } catch (e) { setMsg($("treinoMsg"), e.message, "err"); }
+  }
+  function renovarTreino() { gerarTreino(treinoMeu.prefs || {}); }
+
   function treinoGenFormHtml() {
+    const chip = (v, cls) => `<button type="button" class="chip-choice ${cls}" data-v="${v}">${v}</button>`;
     return `<div class="card">
       <div class="serif" style="font-size:20px;">Gerar meu treino</div>
-      <div style="font-size:12.5px; color:var(--muted3); margin-top:2px;">A IA monta a partir da nossa biblioteca de exercícios. É uma sugestão e não substitui um profissional.</div>
+      <div style="font-size:12.5px; color:var(--muted3); margin-top:2px;">A IA monta a partir da nossa biblioteca. Plano de 30 dias. É uma sugestão e não substitui um profissional.</div>
+      <label style="display:block; margin-top:12px;"><span class="flabel">Objetivo</span><input id="tg_objetivo" class="field" placeholder="ex.: hipertrofia e perda de gordura" /></label>
       <div class="form-grid" style="margin-top:12px;">
-        <label class="col-span"><span class="flabel">Objetivo</span><input id="tg_objetivo" class="field" placeholder="ex.: hipertrofia e perda de gordura" /></label>
-        <label><span class="flabel">Nível</span><select id="tg_nivel" class="field"><option value="iniciante">iniciante</option><option value="intermediario" selected>intermediario</option><option value="avancado">avancado</option></select></label>
+        <label><span class="flabel">Nível</span><select id="tg_nivel" class="field">
+          <option value="sedentario">sedentário</option><option value="basico" selected>básico</option>
+          <option value="intermediario">intermediário</option><option value="avancado">avançado</option></select></label>
         <label><span class="flabel">Dias por semana</span><input id="tg_dias" class="field num" type="number" value="3" min="1" max="7" /></label>
-        <label class="col-span"><span class="flabel">Equipamento</span><input id="tg_equip" class="field" placeholder="ex.: academia completa / casa com halteres" /></label>
       </div>
-      <div style="height:12px"></div>
+      <div style="margin-top:12px;"><span class="flabel">Já treina alguma modalidade? (marque as que fizer)</span>
+        <div style="display:flex; flex-wrap:wrap; gap:6px;">${["Jiu-Jitsu","Crossfit","Corrida","Musculação","Futebol","Natação","Ciclismo"].map((v) => chip(v, "tg-modal")).join("")}</div></div>
+      <label style="display:block; margin-top:10px;"><span class="flabel">Há quanto tempo / frequência (opcional)</span><input id="tg_tempo" class="field" placeholder="ex.: Jiu-Jitsu 2x/semana há 1 ano" /></label>
+      <div style="margin-top:12px;"><span class="flabel">Onde vai treinar?</span>
+        <div style="display:flex; flex-wrap:wrap; gap:6px;">${["Casa","Academia","Rua"].map((v) => chip(v, "tg-local")).join("")}</div></div>
+      <div style="height:14px"></div>
       <button id="btnGerarMeuTreino" class="btn btn-primary" style="width:100%; height:48px; justify-content:center;">Gerar com IA</button>
       <div id="tgMsg2" class="msg"></div>
     </div>`;
   }
   function wireTreinoGen() {
-    $("btnGerarMeuTreino").onclick = async () => {
-      loading($("tgMsg2"), "Montando seu treino com IA...");
-      $("btnGerarMeuTreino").disabled = true;
-      try {
-        const res = await api("/api/treino/gerar", { method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ objetivo: $("tg_objetivo").value.trim(), nivel: $("tg_nivel").value,
-            dias_por_semana: Number($("tg_dias").value) || 3, equipamento: $("tg_equip").value.trim() }) });
-        treinoMeu = res.plano; treinoSessaoSel = 0;
-        renderTreino();
-      } catch (e) { setMsg($("tgMsg2"), e.message, "err"); $("btnGerarMeuTreino").disabled = false; }
-    };
+    genModal = new Set(); genLocal = new Set();
+    document.querySelectorAll(".tg-modal").forEach((b) => b.onclick = () => { b.classList.toggle("active"); b.classList.contains("active") ? genModal.add(b.dataset.v) : genModal.delete(b.dataset.v); });
+    document.querySelectorAll(".tg-local").forEach((b) => b.onclick = () => { b.classList.toggle("active"); b.classList.contains("active") ? genLocal.add(b.dataset.v) : genLocal.delete(b.dataset.v); });
+    $("btnGerarMeuTreino").onclick = () => gerarTreino({
+      objetivo: $("tg_objetivo").value.trim(), nivel: $("tg_nivel").value,
+      dias_por_semana: Number($("tg_dias").value) || 3,
+      modalidades: [...genModal], tempo_modalidade: $("tg_tempo").value.trim(), local: [...genLocal],
+    });
   }
-
-  async function toggleEx(i, feito) {
-    const chave = treinoSessaoSel + ":" + i;
+  async function gerarTreino(prefs) {
+    const msgEl = $("tgMsg2") || $("treinoMsg");
+    loading(msgEl, "Montando seu treino com IA... (alguns segundos)");
     try {
-      await api("/api/treino/registrar", { method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ chave, feito, sessao_idx: treinoSessaoSel, plano_id: treinoMeu.id }) });
-      treinoHoje = await api("/api/treino/today");
+      const res = await api("/api/treino/gerar", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(prefs) });
+      treinoMeu = res.plano;
+      await reloadSemana();
+      treinoView = "cal";
+      setMsg($("treinoMsg"), "Treino gerado!", "ok");
       renderTreino();
-    } catch (e) { setMsg($("treinoMsg"), e.message, "err"); }
-  }
-  async function finalizarTreino() {
-    const total = (treinoMeu.sessoes[treinoSessaoSel].exercicios || []).length;
-    loading($("treinoMsg"), "Finalizando...");
-    try {
-      await api("/api/treino/finalizar", { method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessao_idx: treinoSessaoSel, plano_id: treinoMeu.id, total_exercicios: total }) });
-      treinoHoje = await api("/api/treino/today");
-      setMsg($("treinoMsg"), "Treino finalizado! Check-in registrado.", "ok");
-      renderTreino();
-    } catch (e) { setMsg($("treinoMsg"), e.message, "err"); }
+    } catch (e) { setMsg(msgEl, e.message, "err"); }
   }
 
   function renderBiblioList() {
