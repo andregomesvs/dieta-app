@@ -9,10 +9,10 @@
   --green: #14735A;
   --green-d: #0F5E49;
   --green-dd: #0C4E3D;
-  --muted: #6B716C;
-  --muted2: #858B85;
-  --muted3: #9AA09A;
-  --muted4: #A8ADA6;
+  --muted: #5E645F;
+  --muted2: #6F756F;
+  --muted3: #7E847E;
+  --muted4: #949A94;
   --card: #FFFFFF;
   --line: rgba(25,28,26,.07);
   --line2: rgba(25,28,26,.11);
@@ -74,7 +74,11 @@ svg { display: block; }
 .btn-primary { height: 46px; padding: 0 20px; display: inline-flex; align-items: center; gap: 9px; background: var(--green); color: #fff; font-size: 14.5px; box-shadow: 0 8px 20px rgba(20,115,90,.22); }
 .btn-primary:hover { background: var(--green-d); transform: translateY(-1px); }
 .btn-primary:disabled { opacity: .55; cursor: not-allowed; transform: none; }
-.btn-ghost { height: 36px; padding: 0 14px; background: transparent; border: 1px solid var(--line2); color: var(--muted); font-size: 13px; border-radius: 11px; }
+.btn-ghost { height: 40px; padding: 0 14px; background: transparent; border: 1px solid var(--line2); color: var(--muted); font-size: 13px; border-radius: 11px; }
+.seg { min-height: 34px; }
+.chip-choice { min-height: 44px; }
+/* foco visível por teclado (acessibilidade) */
+button:focus-visible, a:focus-visible, .hist-card:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
 .btn-ghost:hover { color: var(--ink); border-color: rgba(25,28,26,.26); }
 .btn-google { width: 100%; height: 52px; display: flex; align-items: center; justify-content: center; gap: 10px; border-radius: 14px; border: 1px solid rgba(25,28,26,.1); background: #fff; color: var(--ink); font-size: 15px; font-weight: 600; cursor: pointer; transition: all .16s ease; }
 .btn-google:hover { border-color: rgba(25,28,26,.28); box-shadow: 0 6px 18px rgba(25,28,26,.08); }

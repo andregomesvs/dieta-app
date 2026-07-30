@@ -34,7 +34,6 @@ except ImportError:  # Python < 3.9
 
 from dotenv import load_dotenv
 from flask import Flask, request, jsonify, send_from_directory, g
-from flask_cors import CORS
 
 import firebase_admin
 from firebase_admin import credentials, auth as fb_auth, firestore
@@ -51,8 +50,12 @@ GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-flash-latest")
 CRED_PATH = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "./firebase-service-account.json")
 FIREBASE_PROJECT_ID = os.environ.get("FIREBASE_PROJECT_ID", "")
 # E-mails com acesso administrativo (somente leitura). Separados por vírgula.
+# Sem padrão embutido: defina ADMIN_EMAILS no ambiente (ex.: no Render).
 ADMIN_EMAILS = {e.strip().lower() for e in os.environ.get(
-    "ADMIN_EMAILS", "andregomes.vs@gmail.com").split(",") if e.strip()}
+    "ADMIN_EMAILS", "").split(",") if e.strip()}
+
+# Tamanho máximo de upload (10 MB) e tipos aceitos em documentos.
+MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 
 # Telegram + agendamento de lembretes
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
@@ -61,8 +64,9 @@ CRON_SECRET = os.environ.get("CRON_SECRET", "")
 TIMEZONE = os.environ.get("TIMEZONE", "America/Sao_Paulo")
 # Tolerância (min): manda a refeição se o horário caiu nos últimos N minutos.
 REMINDER_WINDOW_MIN = int(os.environ.get("REMINDER_WINDOW_MIN", "15"))
-# Segredo do webhook do Telegram (validado no header). Cai no CRON_SECRET se vazio.
-TELEGRAM_WEBHOOK_SECRET = os.environ.get("TELEGRAM_WEBHOOK_SECRET") or CRON_SECRET or "webhook"
+# Segredo do webhook do Telegram (validado no header). Sem fallback previsível:
+# usa a variável própria ou o CRON_SECRET; se ambos vazios, o webhook rejeita tudo.
+TELEGRAM_WEBHOOK_SECRET = os.environ.get("TELEGRAM_WEBHOOK_SECRET") or CRON_SECRET or ""
 # URL pública do app (o Render fornece RENDER_EXTERNAL_URL automaticamente).
 PUBLIC_URL = os.environ.get("PUBLIC_URL") or os.environ.get("RENDER_EXTERNAL_URL", "")
 
@@ -238,7 +242,21 @@ def format_meal_message(refeicao):
 # App Flask
 # ---------------------------------------------------------------------------
 app = Flask(__name__, static_folder=None)
-CORS(app)
+# App é same-origin (o próprio Flask serve o frontend), então não habilitamos
+# CORS global. Limite de tamanho de upload:
+app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_BYTES
+
+
+@app.errorhandler(413)
+def too_large(_e):
+    return jsonify({"error": "Arquivo muito grande (máx. 10 MB)."}), 413
+
+
+@app.errorhandler(500)
+def internal_error(e):
+    print("[erro-500]", repr(e))
+    return jsonify({"error": "Erro interno. Tente novamente."}), 500
+
 
 # Inicializa o Firebase já na importação do módulo — necessário quando o app
 # roda sob gunicorn (Render), onde o bloco __main__ não é executado.
@@ -377,7 +395,11 @@ def analyze_pdf():
     pdf_bytes = None
 
     if "file" in request.files:
-        pdf_bytes = request.files["file"].read()
+        f = request.files["file"]
+        mt = (f.mimetype or "").lower()
+        if mt and mt != "application/pdf" and not (f.filename or "").lower().endswith(".pdf"):
+            return jsonify({"error": "Envie a bioimpedância em PDF."}), 400
+        pdf_bytes = f.read()
     else:
         data = request.get_json(silent=True) or {}
         if data.get("pdf_base64"):
@@ -446,7 +468,9 @@ def analyze_blood():
     if "file" not in request.files:
         return jsonify({"error": "Nenhum arquivo enviado"}), 400
     f = request.files["file"]
-    media = _ALLOWED_MEDIA.get((f.mimetype or "").lower(), "application/pdf")
+    media = _ALLOWED_MEDIA.get((f.mimetype or "").lower())
+    if not media:
+        return jsonify({"error": "Formato não suportado. Envie PDF ou imagem (PNG/JPG)."}), 400
     file_bytes = f.read()
     try:
         resp = gemini().generate_content(

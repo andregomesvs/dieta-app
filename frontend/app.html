@@ -462,6 +462,19 @@
 
   $("btnLogout").onclick = () => signOut(auth);
 
+  // recarrega os dados ao voltar para a aba (ex.: depois de responder no Telegram)
+  let lastSync = 0;
+  async function syncIfStale() {
+    if (!auth.currentUser || document.visibilityState !== "visible") return;
+    const now = Date.now();
+    if (now - lastSync < 4000) return;
+    lastSync = now;
+    try { await loadAll(); } catch (_) {}
+    if (!$("view-home").classList.contains("hidden")) renderHome();
+  }
+  document.addEventListener("visibilitychange", syncIfStale);
+  window.addEventListener("focus", syncIfStale);
+
   // ---------- API ----------
   async function api(path, opts = {}) {
     // pega um token sempre válido (o Firebase renova automaticamente se expirou)
@@ -676,14 +689,17 @@
     const entradas = Object.values(refs);
     const alvo = consumoHoje.alvo_kcal || (diets[0] && (diets[0].dieta || {}).calorias_alvo_dia) || null;
     const total = consumoHoje.total_kcal || 0;
+    // denominador = total de refeições planejadas na dieta do dia
+    const previstas = ((diets[0] && (diets[0].dieta || {}).refeicoes) || []).length;
 
     if (!entradas.length) {
-      $("hojeAderencia").textContent = "";
+      $("hojeAderencia").textContent = previstas ? `0/${previstas} cumpridas` : "";
       $("hojeBody").innerHTML = `<div class="empty">Nada registrado hoje ainda. Responda os lembretes no Telegram (Cumpri / Outra coisa / Pulei) que aparece aqui.</div>`;
       return;
     }
     const cumpridas = entradas.filter((e) => e.status === "cumpriu").length;
-    $("hojeAderencia").textContent = `${cumpridas}/${entradas.length} cumpridas`;
+    const denom = previstas || entradas.length;
+    $("hojeAderencia").textContent = `${cumpridas}/${denom} cumpridas`;
 
     const pct = alvo ? Math.min(100, (total / alvo) * 100) : 0;
     const acima = alvo && total > alvo;
@@ -880,12 +896,13 @@
         <div class="macro"><div class="v">${br(m.carbo_g)}g</div><div class="l">carbo</div></div>
         <div class="macro"><div class="v">${br(m.gordura_g)}g</div><div class="l">gordura</div></div>
       </div>`;
-    const nm = nextMeal(d.refeicoes || []);
-    if (nm) {
+    const nx = nextMeal(d.refeicoes || []);
+    if (nx) {
+      const nm = nx.r;
       html += `<div class="nextmeal">
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#14735A" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"></circle><path d="M12 7.5V12l3 2"></path></svg>
         <div style="min-width:0;"><div class="t1">${esc(nm.nome)} · ${esc(nm.horario)}</div>
-        <div class="t2">próxima refeição${nm.kcal_total ? " · " + nm.kcal_total + " kcal" : ""}</div></div></div>`;
+        <div class="t2">${nx.amanha ? "próxima refeição · amanhã" : "próxima refeição"}${nm.kcal_total ? " · " + nm.kcal_total + " kcal" : ""}</div></div></div>`;
     }
     $("planoBody").innerHTML = html;
   }
@@ -898,9 +915,11 @@
   function nextMeal(refs) {
     const now = new Date().getHours() * 60 + new Date().getMinutes();
     const withT = refs.map((r) => ({ r, t: parseHora(r.horario) })).filter((x) => x.t != null);
-    if (!withT.length) return refs[0] || null;
-    const upcoming = withT.filter((x) => x.t >= now).sort((a, b) => a.t - b.t);
-    return (upcoming[0] || withT.sort((a, b) => a.t - b.t)[0]).r;
+    if (!withT.length) return refs[0] ? { r: refs[0], amanha: false } : null;
+    const ordenadas = withT.sort((a, b) => a.t - b.t);
+    const upcoming = ordenadas.filter((x) => x.t >= now);
+    if (upcoming.length) return { r: upcoming[0].r, amanha: false };
+    return { r: ordenadas[0].r, amanha: true }; // já passou de todas hoje -> primeira de amanhã
   }
 
   // ---------- gráfico ----------
