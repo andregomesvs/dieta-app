@@ -1004,12 +1004,28 @@ def telegram_setup():
     if not base:
         return jsonify({"error": "URL pública não definida. Passe ?base=https://seu-app.onrender.com"}), 400
     url = base + "/telegram/webhook"
+    # apaga primeiro para garantir que o secret_token atual seja aplicado
+    try:
+        tg_call("deleteWebhook", {"drop_pending_updates": "false"})
+    except Exception:  # noqa: BLE001
+        pass
     res = tg_call("setWebhook", {
         "url": url,
         "secret_token": TELEGRAM_WEBHOOK_SECRET,
         "allowed_updates": json.dumps(["message", "callback_query"]),
     })
     return jsonify({"webhook": url, "resultado": res})
+
+
+@app.route("/telegram/info", methods=["GET"])
+def telegram_info():
+    """Diagnóstico do webhook (getWebhookInfo)."""
+    if (request.args.get("secret") or "") != CRON_SECRET:
+        return jsonify({"error": "não autorizado"}), 401
+    try:
+        return jsonify(tg_call("getWebhookInfo", {}))
+    except Exception as e:  # noqa: BLE001
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/api/consumo/today", methods=["GET"])
