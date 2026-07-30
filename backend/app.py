@@ -770,53 +770,63 @@ def cron_send_reminders():
     enviados_total = 0
     detalhes = []
 
+    usuarios_ok = 0
     for user_doc in db().collection("usuarios").stream():
-        perfil = user_doc.to_dict() or {}
-        chat_id = perfil.get("telegram_chat_id")
-        if not chat_id:
-            continue
-
-        # dieta mais recente
-        dietas = list(
-            db().collection("usuarios").document(user_doc.id)
-            .collection("dietas")
-            .order_by("criado_em", direction=firestore.Query.DESCENDING)
-            .limit(1).stream()
-        )
-        if not dietas:
-            continue
-        dieta = (dietas[0].to_dict() or {}).get("dieta") or {}
-        refeicoes = dieta.get("refeicoes") or []
-
-        # marcador de enviados do dia
-        marca_ref = (db().collection("usuarios").document(user_doc.id)
-                     .collection("lembretes").document(hoje))
-        ja_enviados = set((marca_ref.get().to_dict() or {}).get("enviados", []))
-
-        for idx, ref in enumerate(refeicoes):
-            hm = parse_horario(ref.get("horario"))
-            if not hm:
+        try:
+            perfil = user_doc.to_dict() or {}
+            chat_id = perfil.get("telegram_chat_id")
+            if not chat_id:
                 continue
-            alvo = agora.replace(hour=hm[0], minute=hm[1], second=0, microsecond=0)
-            delta_min = (agora - alvo).total_seconds() / 60.0
-            chave = f"{idx}"
-            if 0 <= delta_min <= REMINDER_WINDOW_MIN and chave not in ja_enviados:
-                try:
-                    botoes = {"inline_keyboard": [[
-                        {"text": "✅ Cumpri", "callback_data": f"ok|{hoje}|{idx}"},
-                        {"text": "🔄 Outra coisa", "callback_data": f"other|{hoje}|{idx}"},
-                        {"text": "⏭️ Pulei", "callback_data": f"skip|{hoje}|{idx}"},
-                    ]]}
-                    tg_send(chat_id, format_meal_message(ref), reply_markup=botoes)
-                    ja_enviados.add(chave)
-                    enviados_total += 1
-                    detalhes.append({"uid": user_doc.id, "refeicao": ref.get("nome")})
-                except Exception as e:  # noqa: BLE001
-                    detalhes.append({"uid": user_doc.id, "erro": str(e)})
 
-        marca_ref.set({"enviados": list(ja_enviados)}, merge=True)
+            # dieta mais recente
+            dietas = list(
+                db().collection("usuarios").document(user_doc.id)
+                .collection("dietas")
+                .order_by("criado_em", direction=firestore.Query.DESCENDING)
+                .limit(1).stream()
+            )
+            if not dietas:
+                continue
+            dieta = (dietas[0].to_dict() or {}).get("dieta") or {}
+            refeicoes = dieta.get("refeicoes") or []
+            usuarios_ok += 1
 
-    return jsonify({"hora": agora.isoformat(), "enviados": enviados_total, "detalhes": detalhes})
+            # marcador de enviados do dia
+            marca_ref = (db().collection("usuarios").document(user_doc.id)
+                         .collection("lembretes").document(hoje))
+            ja_enviados = set((marca_ref.get().to_dict() or {}).get("enviados", []))
+
+            for idx, ref in enumerate(refeicoes):
+                if not isinstance(ref, dict):
+                    continue
+                hm = parse_horario(ref.get("horario"))
+                if not hm:
+                    continue
+                alvo = agora.replace(hour=hm[0], minute=hm[1], second=0, microsecond=0)
+                delta_min = (agora - alvo).total_seconds() / 60.0
+                chave = f"{idx}"
+                if 0 <= delta_min <= REMINDER_WINDOW_MIN and chave not in ja_enviados:
+                    try:
+                        botoes = {"inline_keyboard": [[
+                            {"text": "✅ Cumpri", "callback_data": f"ok|{hoje}|{idx}"},
+                            {"text": "🔄 Outra coisa", "callback_data": f"other|{hoje}|{idx}"},
+                            {"text": "⏭️ Pulei", "callback_data": f"skip|{hoje}|{idx}"},
+                        ]]}
+                        tg_send(chat_id, format_meal_message(ref), reply_markup=botoes)
+                        ja_enviados.add(chave)
+                        enviados_total += 1
+                        detalhes.append({"uid": user_doc.id, "refeicao": ref.get("nome")})
+                    except Exception as e:  # noqa: BLE001
+                        detalhes.append({"uid": user_doc.id, "erro_envio": str(e)})
+
+            marca_ref.set({"enviados": list(ja_enviados)}, merge=True)
+        except Exception as e:  # noqa: BLE001
+            # um usuário com problema não pode interromper os demais
+            detalhes.append({"uid": user_doc.id, "erro_usuario": str(e)})
+            continue
+
+    return jsonify({"hora": agora.isoformat(), "usuarios_processados": usuarios_ok,
+                    "enviados": enviados_total, "detalhes": detalhes})
 
 
 # ---------------------------------------------------------------------------
