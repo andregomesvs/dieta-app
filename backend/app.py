@@ -1308,6 +1308,139 @@ def exercicios_status(eid):
     return jsonify({"ok": True, "status": novo})
 
 
+# ---------------------------------------------------------------------------
+# Planos de treino (rascunho) — geração assistida por IA + edição
+# A IA recebe SOMENTE dados não sensíveis (objetivo, nível, dias, equipamento)
+# e a biblioteca de exercícios APROVADOS. Nenhum dado de saúde é enviado.
+# ---------------------------------------------------------------------------
+def _exercicios_aprovados():
+    out = {}
+    for d in db().collection("exercicios").where("status", "==", "aprovado").limit(500).stream():
+        e = d.to_dict() or {}
+        out[d.id] = {"id": d.id, "nome": e.get("nome"),
+                     "grupo_muscular": e.get("grupo_muscular"),
+                     "equipamento": e.get("equipamento"),
+                     "padrao_movimento": e.get("padrao_movimento")}
+    return out
+
+
+TREINO_SYSTEM = """Você é um assistente que monta um RASCUNHO de plano de treino \
+para revisão de um personal trainer. Use APENAS os exercícios da lista fornecida \
+(pelo campo id). NUNCA invente exercícios fora da lista. O resultado é sugestivo \
+e será revisado por um profissional antes de publicar.
+
+Devolva APENAS JSON válido:
+{
+  "nome": string,
+  "objetivo": string,
+  "nivel": string,
+  "dias_por_semana": number,
+  "sessoes": [
+    {
+      "dia": string,
+      "foco": string,
+      "exercicios": [
+        {"exercicio_id": string, "series": number, "reps": string,
+         "carga": string, "intervalo_s": number, "obs": string}
+      ]
+    }
+  ],
+  "observacoes": string
+}
+Distribua os exercícios pelos dias conforme o foco; séries, repetições e \
+intervalos coerentes com o nível informado. Use somente exercicio_id da lista."""
+
+
+@app.route("/api/treino/gerar", methods=["POST"])
+@require_staff
+def treino_gerar():
+    d = request.get_json(silent=True) or {}
+    aprovados = _exercicios_aprovados()
+    if not aprovados:
+        return jsonify({"error": "Nenhum exercício aprovado na biblioteca ainda."}), 400
+
+    catalogo = [{"id": v["id"], "nome": v["nome"], "grupo": v["grupo_muscular"],
+                 "equipamento": v["equipamento"], "padrao": v["padrao_movimento"]}
+                for v in aprovados.values()]
+    user_msg = (
+        f"Objetivo: {d.get('objetivo', '')}\n"
+        f"Nível: {d.get('nivel', 'intermediario')}\n"
+        f"Dias por semana: {d.get('dias_por_semana', 3)}\n"
+        f"Equipamento disponível: {d.get('equipamento', 'academia completa')}\n\n"
+        f"Exercícios aprovados disponíveis (use só estes id):\n"
+        + json.dumps(catalogo, ensure_ascii=False)
+    )
+    try:
+        resp = gemini(system_instruction=TREINO_SYSTEM).generate_content(user_msg)
+        plano = _safe_json((resp.text or "").strip())
+    except Exception as e:  # noqa: BLE001
+        return jsonify({"error": str(e)}), 502
+
+    # Guardrail: mantém só exercícios que existem e estão aprovados
+    descartados = 0
+    for s in plano.get("sessoes", []) or []:
+        validos = []
+        for ex in s.get("exercicios", []) or []:
+            info = aprovados.get(ex.get("exercicio_id"))
+            if info:
+                ex["nome"] = info["nome"]
+                validos.append(ex)
+            else:
+                descartados += 1
+        s["exercicios"] = validos
+    plano["_descartados"] = descartados
+    plano["aviso"] = ("Rascunho gerado por IA a partir da biblioteca aprovada. "
+                      "Requer revisão e aprovação de um personal antes de publicar.")
+    return jsonify({"plano": plano})
+
+
+@app.route("/api/treinos", methods=["GET"])
+@require_staff
+def treinos_list():
+    docs = (db().collection("treinos")
+            .order_by("criado_em", direction=firestore.Query.DESCENDING).limit(100).stream())
+    out = []
+    for d in docs:
+        it = d.to_dict() or {}
+        it["id"] = d.id
+        out.append(it)
+    return jsonify(out)
+
+
+@app.route("/api/treinos", methods=["POST"])
+@require_staff
+def treinos_create():
+    plano = request.get_json(silent=True) or {}
+    if not plano.get("nome"):
+        return jsonify({"error": "Dê um nome ao treino."}), 400
+    agora = datetime.datetime.utcnow().isoformat()
+    plano.update({"status": "rascunho", "versao": 1,
+                  "criado_por": g.email, "criado_em": agora,
+                  "atualizado_por": g.email, "atualizado_em": agora})
+    plano.pop("_descartados", None)
+    ref = db().collection("treinos").add(plano)
+    plano["id"] = ref[1].id
+    return jsonify(plano)
+
+
+@app.route("/api/treinos/<tid>", methods=["PUT"])
+@require_staff
+def treinos_update(tid):
+    ref = db().collection("treinos").document(tid)
+    prev = ref.get()
+    if not prev.exists:
+        return jsonify({"error": "Treino não encontrado."}), 404
+    p = prev.to_dict() or {}
+    ref.collection("versoes").document(str(p.get("versao", 1))).set(p)
+    plano = request.get_json(silent=True) or {}
+    plano["versao"] = int(p.get("versao", 1)) + 1
+    plano["atualizado_por"] = g.email
+    plano["atualizado_em"] = datetime.datetime.utcnow().isoformat()
+    plano.pop("_descartados", None)
+    ref.set(plano, merge=True)
+    return jsonify({"ok": True, "versao": plano["versao"]})
+
+
 @app.route("/api/admin/users", methods=["GET"])
 @require_admin
 def admin_users():
