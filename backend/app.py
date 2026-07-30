@@ -342,6 +342,7 @@ bioimpedância. Analise o PDF anexado e devolva APENAS um objeto JSON válido \
 não estiver presente no exame.
 
 {
+  "data_exame": string|null,
   "nome": string|null,
   "sexo": "masculino"|"feminino"|null,
   "idade": number|null,
@@ -357,6 +358,7 @@ não estiver presente no exame.
   "observacoes": string|null
 }
 
+Para "data_exame", use o formato AAAA-MM-DD (data em que o exame foi feito). \
 Responda somente com o JSON."""
 
 
