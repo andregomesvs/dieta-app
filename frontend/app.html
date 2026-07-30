@@ -351,8 +351,9 @@
 
   <div class="card" id="medManualCard" style="margin-top:14px;">
     <div class="form-grid">
-      <label class="col-span"><span class="flabel">Data</span>
-        <input id="med_data" class="field" type="date" /></label>
+      <label class="col-span"><span class="flabel">Data da medição (do exame)</span>
+        <input id="med_data" class="field" type="date" />
+        <span style="font-size:11.5px; color:var(--muted3);">É a data do exame — é ela que entra no gráfico. A data de hoje fica registrada como inserção.</span></label>
       <label><span class="flabel">Peso</span>
         <div class="field-unit"><input id="med_peso_kg" class="field num" type="number" step="0.1" placeholder="88,1" style="padding-right:48px;" /><span class="u">kg</span></div></label>
       <label><span class="flabel">Gordura corporal</span>
@@ -631,25 +632,14 @@
     const saud = h < 12 ? "Bom dia" : h < 18 ? "Boa tarde" : "Boa noite";
     return saud + ", " + nome + ".";
   }
-  // série cronológica combinando medições próprias + snapshots das dietas
+  // série cronológica pela DATA DA MEDIÇÃO (não a data de inserção)
   function seriesFor(metricKey) {
     const key = { peso: "peso_kg", gordura: "percentual_gordura", magra: "massa_magra_kg", cintura: "cintura_cm" }[metricKey];
     const byDay = {};
-    // dietas (fonte secundária)
-    diets.forEach((d) => {
-      const v = (d.perfil || {})[key];
-      if (typeof v === "number") {
-        const day = (d.criado_em || "").slice(0, 10);
-        byDay[day] = { v, iso: d.criado_em };
-      }
-    });
-    // medições (fonte primária, sobrescreve o dia)
     medicoes.forEach((m) => {
       const v = m[key];
-      if (typeof v === "number") {
-        const day = (m.data || m.criado_em || "").slice(0, 10);
-        byDay[day] = { v, iso: m.data || m.criado_em };
-      }
+      const day = (m.data || m.criado_em || "").slice(0, 10);
+      if (typeof v === "number" && day) byDay[day] = { v, iso: day };
     });
     return Object.keys(byDay).sort().map((k) => byDay[k]);
   }
@@ -922,8 +912,8 @@
     const X = (i) => 24 + i * (572 / (n - 1));
     const Y = (v) => 196 - ((v - lo) / (hi - lo)) * 166;
     const pts = serie.map((p, i) => {
-      const dt = new Date(p.iso);
-      return { x: X(i).toFixed(1), y: Y(p.v).toFixed(1), label: MESES[dt.getMonth()], value: br(p.v) + suf };
+      const label = p.iso.length >= 10 ? p.iso.slice(8, 10) + "/" + p.iso.slice(5, 7) : p.iso;
+      return { x: X(i).toFixed(1), y: Y(p.v).toFixed(1), label, value: br(p.v) + suf };
     });
     const line = pts.map((p, i) => (i ? "L" : "M") + p.x + " " + p.y).join(" ");
     const area = line + " L" + X(n - 1).toFixed(1) + " 208 L24 208 Z";
@@ -1269,14 +1259,20 @@
       if (m.peso_kg != null) parts.push(br(m.peso_kg) + " kg");
       if (m.percentual_gordura != null) parts.push(br(m.percentual_gordura) + "% gord.");
       if (m.cintura_cm != null) parts.push(br(m.cintura_cm) + " cm cint.");
-      return `<div class="meal-row"><span class="time" style="width:auto;">${esc((m.data || "").split("-").reverse().join("/"))}</span>
-        <span class="nm mono" style="font-weight:400;">${esc(parts.join(" · "))}</span></div>`;
+      const medida = (m.data || "").split("-").reverse().join("/");
+      const inserida = (m.criado_em || "").slice(0, 10).split("-").reverse().join("/");
+      const src = m.fonte === "bioimpedancia" ? " · bioimpedância" : "";
+      return `<div class="meal-row" style="align-items:flex-start;">
+        <span class="time" style="width:auto;">${esc(medida)}</span>
+        <span class="nm mono" style="font-weight:400;">${esc(parts.join(" · "))}
+          <span class="it-sub" style="font-family:'Plus Jakarta Sans';">— registrado ${esc(inserida)}${src}</span></span></div>`;
     }).join("");
   }
 
   $("btnSaveMedicao").onclick = async () => {
     const dataSel = $("med_data").value;
-    const body = { data: dataSel };
+    const body = { data: dataSel, nome: profile.nome || null,
+                   fonte: $("medBioInput").files[0] ? "bioimpedancia" : "manual" };
     let algum = false;
     ["peso_kg","percentual_gordura","massa_magra_kg","gordura_visceral","cintura_cm","quadril_cm"].forEach((k) => {
       const v = $("med_" + k).value.trim();

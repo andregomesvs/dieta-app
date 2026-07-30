@@ -700,7 +700,12 @@ def list_measurements():
 @require_auth
 def add_measurement():
     data = request.get_json(silent=True) or {}
+    # data = data da MEDIÇÃO (exame); criado_em = data de INSERÇÃO no app
     reg = {"data": data.get("data") or datetime.date.today().isoformat()}
+    if data.get("nome"):
+        reg["nome"] = data.get("nome")
+    if data.get("fonte"):
+        reg["fonte"] = data.get("fonte")  # ex.: "bioimpedancia", "manual"
     for c in MEDICAO_CAMPOS:
         v = data.get(c)
         if v is not None and v != "":
