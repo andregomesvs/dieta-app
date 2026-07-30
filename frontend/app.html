@@ -23,7 +23,8 @@
         <span class="email" id="userEmail"></span>
         <span class="avatar" id="userAvatar"></span>
       </div>
-      <button id="btnBiblioteca" class="btn btn-ghost hidden">Treino</button>
+      <button id="btnTreino" class="btn btn-ghost">Treino</button>
+      <button id="btnBiblioteca" class="btn btn-ghost hidden">Biblioteca</button>
       <button id="btnAdmin" class="btn btn-ghost hidden">Admin</button>
       <button id="btnLogout" class="btn btn-ghost">Sair</button>
     </div>
@@ -444,56 +445,46 @@
     <div style="flex:1;"></div>
     <span class="badge" style="background:rgba(20,115,90,.09); color:var(--green); border-color:transparent;">Equipe</span>
   </div>
+  <div style="margin-top:22px; display:flex; align-items:flex-end; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+    <div>
+      <div class="serif" style="font-size:34px; line-height:1.1;">Biblioteca de exercícios</div>
+      <div id="biblioSub" style="margin-top:6px; font-size:13px; color:var(--muted);"></div>
+    </div>
+    <div style="display:flex; gap:8px;">
+      <button id="btnSeedLib" class="btn btn-ghost" style="height:42px;">Popular com IA</button>
+      <button id="btnNovoEx" class="btn btn-primary" style="height:42px;">+ Novo</button>
+    </div>
+  </div>
+  <div style="margin-top:12px; display:flex; gap:8px; flex-wrap:wrap;">
+    <input id="biblioBusca" class="field" placeholder="Buscar por nome, grupo, equipamento…" style="flex:1; min-width:200px;" />
+    <select id="biblioStatus" class="field" style="width:160px;">
+      <option value="">Todos os status</option>
+      <option value="aprovado">Aprovados</option>
+      <option value="rascunho">Rascunhos</option>
+      <option value="inativo">Inativos</option>
+    </select>
+  </div>
+  <div id="biblioMsg" class="msg"></div>
+  <div id="biblioList" style="margin-top:12px; display:grid; gap:8px;"></div>
+  <div id="biblioForm" class="hidden" style="margin-top:12px;"></div>
+</section>
+
+<!-- ===================== TREINO (usuário) ===================== -->
+<section id="view-treino" class="wrap hidden">
+  <div style="display:flex; align-items:center; gap:10px;">
+    <button id="btnBackTreino" class="btn btn-ghost" style="padding:0 13px 0 10px;">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:-2px; margin-right:4px;"><path d="M15 6l-6 6 6 6"></path></svg>
+      Voltar
+    </button>
+    <div style="flex:1;"></div>
+    <button id="btnGoBiblio" class="btn btn-ghost hidden" style="height:36px;">Biblioteca (equipe)</button>
+  </div>
   <div style="margin-top:22px;">
     <div class="serif" style="font-size:34px; line-height:1.1;">Treino</div>
-    <div style="margin-top:6px; font-size:15px; color:var(--muted);">Planos de treino e biblioteca de exercícios da equipe.</div>
+    <div id="treinoSub" style="margin-top:6px; font-size:15px; color:var(--muted);">Seu plano de treino, gerado por IA.</div>
   </div>
-  <div class="seg-wrap" id="treinoTabs" style="margin-top:16px; display:inline-flex;">
-    <button class="seg active" data-tab="planos">Planos</button>
-    <button class="seg" data-tab="exercicios">Exercícios</button>
-  </div>
-
-  <!-- ABA PLANOS -->
-  <div id="tabPlanos" style="margin-top:14px;">
-    <div class="card">
-      <div class="serif" style="font-size:20px;">Gerar plano com IA</div>
-      <div style="font-size:12.5px; color:var(--muted3); margin-top:2px;">A IA sugere a partir dos exercícios <b>aprovados</b>. Não usa dados de saúde. Você edita antes de salvar; nada é publicado ao usuário.</div>
-      <div class="form-grid" style="margin-top:12px;">
-        <label class="col-span"><span class="flabel">Objetivo</span><input id="tp_objetivo" class="field" placeholder="ex.: hipertrofia com foco em superiores" /></label>
-        <label><span class="flabel">Nível</span><select id="tp_nivel" class="field"><option value="iniciante">iniciante</option><option value="intermediario" selected>intermediario</option><option value="avancado">avancado</option></select></label>
-        <label><span class="flabel">Dias por semana</span><input id="tp_dias" class="field num" type="number" value="3" min="1" max="7" /></label>
-        <label class="col-span"><span class="flabel">Equipamento disponível</span><input id="tp_equip" class="field" placeholder="ex.: academia completa / halteres em casa" /></label>
-      </div>
-      <div style="height:12px"></div>
-      <button id="btnGerarTreino" class="btn btn-primary" style="width:100%; height:46px; justify-content:center;">Gerar com IA</button>
-      <div id="tpMsg" class="msg"></div>
-    </div>
-    <div id="tpDraft" style="margin-top:12px;"></div>
-    <div class="card" style="margin-top:12px;">
-      <div class="card-title" style="font-size:18px;">Planos salvos</div>
-      <div id="tpList" style="margin-top:10px; display:grid; gap:8px;"></div>
-    </div>
-  </div>
-
-  <!-- ABA EXERCÍCIOS (biblioteca) -->
-  <div id="tabExercicios" class="hidden" style="margin-top:14px;">
-    <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;">
-      <div id="biblioSub" style="font-size:13px; color:var(--muted);"></div>
-      <button id="btnNovoEx" class="btn btn-primary" style="height:42px;">+ Novo exercício</button>
-    </div>
-    <div style="margin-top:12px; display:flex; gap:8px; flex-wrap:wrap;">
-      <input id="biblioBusca" class="field" placeholder="Buscar por nome, grupo, equipamento…" style="flex:1; min-width:200px;" />
-      <select id="biblioStatus" class="field" style="width:160px;">
-        <option value="">Todos os status</option>
-        <option value="aprovado">Aprovados</option>
-        <option value="rascunho">Rascunhos</option>
-        <option value="inativo">Inativos</option>
-      </select>
-    </div>
-    <div id="biblioMsg" class="msg"></div>
-    <div id="biblioList" style="margin-top:12px; display:grid; gap:8px;"></div>
-    <div id="biblioForm" class="hidden" style="margin-top:12px;"></div>
-  </div>
+  <div id="treinoMsg" class="msg"></div>
+  <div id="treinoBody" style="margin-top:14px;"></div>
 </section>
 
 <script type="module">
@@ -574,7 +565,7 @@
 
   // ---------- navegação ----------
   function showView(name) {
-    ["home","form","dieta","analise","medicao","meta","admin","biblioteca"].forEach((v) => $("view-" + v).classList.toggle("hidden", v !== name));
+    ["home","form","dieta","analise","medicao","meta","admin","biblioteca","treino"].forEach((v) => $("view-" + v).classList.toggle("hidden", v !== name));
     if (name === "home") renderHome();
     window.scrollTo(0, 0);
   }
@@ -596,160 +587,148 @@
   $("biblioBusca").oninput = () => renderBiblioList();
   $("biblioStatus").onchange = () => renderBiblioList();
 
-  // ---------- TREINO (Planos + Biblioteca) ----------
-  $("treinoTabs").querySelectorAll(".seg").forEach((b) => b.onclick = () => setTreinoTab(b.getAttribute("data-tab")));
-  function setTreinoTab(tab) {
-    $("treinoTabs").querySelectorAll(".seg").forEach((x) => x.classList.toggle("active", x.getAttribute("data-tab") === tab));
-    $("tabPlanos").classList.toggle("hidden", tab !== "planos");
-    $("tabExercicios").classList.toggle("hidden", tab !== "exercicios");
-  }
-
+  // ---------- BIBLIOTECA (equipe) ----------
   async function openBiblioteca() {
     $("biblioForm").classList.add("hidden");
     $("biblioList").classList.remove("hidden");
-    $("tpDraft").innerHTML = ""; draftPlano = null; draftId = null;
-    setTreinoTab("planos");
-    loading($("tpMsg"), "Carregando...");
+    loading($("biblioMsg"), "Carregando biblioteca...");
     showView("biblioteca");
     try {
       exercicios = await api("/api/exercicios");
-      treinos = await api("/api/treinos");
-      setMsg($("tpMsg"), "", ""); setMsg($("biblioMsg"), "", "");
+      setMsg($("biblioMsg"), "", "");
       renderBiblioList();
-      renderTpList();
-    } catch (e) { setMsg($("tpMsg"), e.message, "err"); }
+    } catch (e) { setMsg($("biblioMsg"), e.message, "err"); }
   }
-
-  // ----- Planos de treino -----
-  function aprovadosOptions(selId) {
-    return exercicios.filter((e) => e.status === "aprovado")
-      .map((e) => `<option value="${e.id}" ${selId === e.id ? "selected" : ""}>${esc(e.nome || "")}</option>`).join("");
-  }
-  function renderTpList() {
-    if (!treinos.length) { $("tpList").innerHTML = `<div class="empty">Nenhum plano salvo ainda.</div>`; return; }
-    $("tpList").innerHTML = treinos.map((t) => `
-      <div class="hist-card" data-id="${t.id}">
-        <div style="min-width:0; flex:1;">
-          <div class="t">${esc(t.nome || "Treino")} <span class="an-badge bg-atencao" style="margin-left:4px;">${esc(t.status || "rascunho")}</span></div>
-          <div class="d" style="font-family:'Plus Jakarta Sans';">${esc(t.objetivo || "")} · ${esc(t.nivel || "")} · ${(t.sessoes || []).length} sessão(ões) · v${t.versao || 1}</div>
-        </div>
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#B4B9B3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"></path></svg>
-      </div>`).join("");
-    $("tpList").querySelectorAll(".hist-card").forEach((el) => el.onclick = () => openTreino(el.dataset.id));
-  }
-  function openTreino(id) {
-    const t = treinos.find((x) => x.id === id);
-    if (!t) return;
-    draftPlano = JSON.parse(JSON.stringify(t)); draftId = id;
-    setTreinoTab("planos"); renderDraft(); window.scrollTo(0, 0);
-  }
-
-  $("btnGerarTreino").onclick = async () => {
-    loading($("tpMsg"), "Gerando plano com IA...");
-    $("btnGerarTreino").disabled = true;
+  $("btnSeedLib").onclick = async () => {
+    if (!confirm("Gerar exercícios iniciais com IA e adicioná-los como aprovados?")) return;
+    loading($("biblioMsg"), "Gerando exercícios com IA...");
+    $("btnSeedLib").disabled = true;
     try {
-      const res = await api("/api/treino/gerar", { method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ objetivo: $("tp_objetivo").value.trim(), nivel: $("tp_nivel").value,
-          dias_por_semana: Number($("tp_dias").value) || 3, equipamento: $("tp_equip").value.trim() }) });
-      draftPlano = res.plano; draftId = null;
-      setMsg($("tpMsg"), "Rascunho gerado. Edite abaixo e salve.", "ok");
-      renderDraft();
-    } catch (e) { setMsg($("tpMsg"), e.message, "err"); }
-    finally { $("btnGerarTreino").disabled = false; }
+      const r = await api("/api/exercicios/seed", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+      exercicios = await api("/api/exercicios");
+      setMsg($("biblioMsg"), (r.criados || 0) + " exercício(s) adicionados.", "ok");
+      renderBiblioList();
+    } catch (e) { setMsg($("biblioMsg"), e.message, "err"); }
+    finally { $("btnSeedLib").disabled = false; }
   };
 
-  function syncDraftFromDom() {
-    if (!draftPlano) return;
-    const D = $("tpDraft");
-    draftPlano.nome = D.querySelector(".d-nome").value.trim();
-    draftPlano.objetivo = D.querySelector(".d-objetivo").value.trim();
-    draftPlano.nivel = D.querySelector(".d-nivel").value;
-    (draftPlano.sessoes || []).forEach((s, si) => {
-      const se = D.querySelector(`.d-sessao[data-s="${si}"]`);
-      if (!se) return;
-      s.dia = se.querySelector(".d-dia").value.trim();
-      s.foco = se.querySelector(".d-foco").value.trim();
-      (s.exercicios || []).forEach((ex, ei) => {
-        const row = se.querySelector(`.d-ex[data-e="${ei}"]`);
-        if (!row) return;
-        ex.exercicio_id = row.querySelector(".d-exsel").value;
-        ex.nome = row.querySelector(".d-exsel").selectedOptions[0]?.textContent || ex.nome;
-        ex.series = Number(row.querySelector(".d-series").value) || null;
-        ex.reps = row.querySelector(".d-reps").value.trim();
-        ex.carga = row.querySelector(".d-carga").value.trim();
-        ex.intervalo_s = Number(row.querySelector(".d-int").value) || null;
-        ex.obs = row.querySelector(".d-obs").value.trim();
-      });
-    });
+  // ---------- TREINO (usuário: gerar + executar + finalizar) ----------
+  let treinoMeu = null, treinoHoje = {}, treinoSessaoSel = 0;
+  $("btnTreino").onclick = () => openTreinoUser();
+  $("btnBackTreino").onclick = () => showView("home");
+  $("btnGoBiblio").onclick = () => openBiblioteca();
+
+  async function openTreinoUser() {
+    showView("treino");
+    $("btnGoBiblio").classList.toggle("hidden", !isStaff);
+    loading($("treinoMsg"), "Carregando seu treino...");
+    try {
+      treinoMeu = await api("/api/treino/meu");
+      treinoHoje = await api("/api/treino/today");
+      setMsg($("treinoMsg"), "", "");
+      renderTreino();
+    } catch (e) { setMsg($("treinoMsg"), e.message, "err"); }
   }
 
-  function renderDraft() {
-    const p = draftPlano;
-    if (!p) { $("tpDraft").innerHTML = ""; return; }
+  function renderTreino() {
+    const has = treinoMeu && treinoMeu.sessoes && treinoMeu.sessoes.length;
+    if (!has) {
+      $("treinoBody").innerHTML = treinoGenFormHtml();
+      wireTreinoGen();
+      return;
+    }
+    const sessoes = treinoMeu.sessoes;
+    if (treinoSessaoSel >= sessoes.length) treinoSessaoSel = 0;
+    const s = sessoes[treinoSessaoSel] || {};
+    const feitos = treinoHoje.feitos || {};
+    const finalizado = !!treinoHoje.finalizado;
+    const totalEx = (s.exercicios || []).length;
+    const feitosCount = (s.exercicios || []).filter((_, i) => feitos[treinoSessaoSel + ":" + i]).length;
+
     let html = `<div class="card">
       <div class="row" style="justify-content:space-between;">
-        <div class="serif" style="font-size:22px;">${draftId ? "Editar plano" : "Rascunho do plano"}</div>
-        ${p._descartados ? `<span class="an-badge bg-atencao">${p._descartados} sugestão(ões) fora da biblioteca descartada(s)</span>` : ""}
+        <div><div class="serif" style="font-size:22px;">${esc(treinoMeu.nome || "Treino")}</div>
+        <div style="font-size:12.5px; color:var(--muted3);">${esc(treinoMeu.objetivo || "")}${treinoMeu.nivel ? " · " + esc(treinoMeu.nivel) : ""}</div></div>
+        <button id="btnNovoTreino" class="btn btn-ghost" style="height:36px;">Gerar novo</button>
       </div>
-      <div class="form-grid" style="margin-top:12px;">
-        <label class="col-span"><span class="flabel">Nome do treino</span><input class="field d-nome" value="${esc(p.nome || "")}" /></label>
-        <label><span class="flabel">Objetivo</span><input class="field d-objetivo" value="${esc(p.objetivo || "")}" /></label>
-        <label><span class="flabel">Nível</span><select class="field d-nivel">
-          ${["iniciante","intermediario","avancado"].map((n) => `<option ${p.nivel === n ? "selected" : ""}>${n}</option>`).join("")}</select></label>
+      <div class="seg-wrap" style="margin-top:12px; display:inline-flex; flex-wrap:wrap;">
+        ${sessoes.map((x, i) => `<button class="seg ${i === treinoSessaoSel ? "active" : ""} tr-sesbtn" data-i="${i}">${esc(x.dia || x.foco || ("Sessão " + (i + 1)))}</button>`).join("")}
       </div>`;
-    (p.sessoes || []).forEach((s, si) => {
-      html += `<div class="diet-meal d-sessao" data-s="${si}" style="margin-top:12px;">
-        <div class="form-grid" style="margin-bottom:6px;">
-          <label><span class="flabel">Dia</span><input class="field d-dia" value="${esc(s.dia || "")}" placeholder="ex.: Segunda" /></label>
-          <label><span class="flabel">Foco</span><input class="field d-foco" value="${esc(s.foco || "")}" placeholder="ex.: Empurrar" /></label>
-        </div>`;
-      (s.exercicios || []).forEach((ex, ei) => {
-        html += `<div class="d-ex" data-e="${ei}" style="border-top:1px solid var(--line); padding-top:8px; margin-top:8px;">
-          <div style="display:flex; gap:6px; align-items:center;">
-            <select class="field d-exsel" style="flex:1;">${aprovadosOptions(ex.exercicio_id)}</select>
-            <button class="chip-sm danger d-exdel" data-s="${si}" data-e="${ei}">remover</button>
+    if (finalizado) html += `<div class="note" style="margin-top:12px;">✅ Treino de hoje finalizado (${feitosCount}/${totalEx}). Bom trabalho!</div>`;
+    html += `<div style="margin-top:12px; display:grid; gap:8px;">`;
+    (s.exercicios || []).forEach((ex, i) => {
+      const chave = treinoSessaoSel + ":" + i;
+      const done = !!feitos[chave];
+      html += `<div class="hoje-meal">
+        <div style="display:flex; align-items:center; gap:10px;">
+          <input type="checkbox" class="tr-check" data-i="${i}" ${done ? "checked" : ""} ${finalizado ? "disabled" : ""} style="width:20px; height:20px; accent-color:var(--green);" />
+          <div style="flex:1; min-width:0;">
+            <div style="font-size:14px; font-weight:600; ${done ? "color:var(--muted3); text-decoration:line-through;" : ""}">${esc(ex.nome || "")}</div>
+            <div style="font-size:12px; color:var(--muted2);">${ex.series ? ex.series + "x" : ""}${ex.reps ? esc(ex.reps) : ""}${ex.carga ? " · " + esc(ex.carga) : ""}${ex.intervalo_s ? " · desc. " + ex.intervalo_s + "s" : ""}</div>
+            ${ex.obs ? `<div style="font-size:11.5px; color:var(--muted3);">${esc(ex.obs)}</div>` : ""}
           </div>
-          <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:6px; margin-top:6px;">
-            <input class="field num d-series" type="number" value="${ex.series != null ? ex.series : ""}" placeholder="séries" />
-            <input class="field d-reps" value="${esc(ex.reps || "")}" placeholder="reps" />
-            <input class="field d-carga" value="${esc(ex.carga || "")}" placeholder="carga" />
-            <input class="field num d-int" type="number" value="${ex.intervalo_s != null ? ex.intervalo_s : ""}" placeholder="descanso s" />
-          </div>
-          <input class="field d-obs" value="${esc(ex.obs || "")}" placeholder="observação" style="margin-top:6px;" />
-        </div>`;
-      });
-      html += `<button class="chip-sm d-exadd" data-s="${si}" style="margin-top:8px;">+ exercício</button></div>`;
+        </div>
+      </div>`;
     });
-    html += `<button class="chip-sm d-sesadd" style="margin-top:10px;">+ sessão</button>
-      <div style="margin-top:14px; display:flex; gap:10px;">
-        <button class="btn btn-ghost d-cancel" style="height:46px;">Cancelar</button>
-        <button class="btn btn-primary d-save" style="flex:1; height:46px; justify-content:center;">${draftId ? "Salvar alterações" : "Salvar plano"}</button>
-      </div>
-      <div class="disclaimer" style="margin-top:12px;">${esc(p.aviso || "Rascunho sugestivo — requer revisão profissional antes de publicar.")}</div>
-      <div id="dSaveMsg" class="msg"></div></div>`;
-    $("tpDraft").innerHTML = html;
+    html += `</div>`;
+    if (!finalizado) html += `<button id="btnFinalizarTreino" class="btn btn-primary" style="width:100%; height:48px; justify-content:center; margin-top:14px;">Finalizar treino (${feitosCount}/${totalEx})</button>`;
+    html += `<div class="disclaimer" style="margin-top:12px;">${esc(treinoMeu.aviso || "Plano sugerido por IA — não substitui um profissional de educação física.")}</div></div>`;
+    $("treinoBody").innerHTML = html;
 
-    const D = $("tpDraft");
-    D.querySelectorAll(".d-exdel").forEach((b) => b.onclick = () => { syncDraftFromDom(); p.sessoes[+b.dataset.s].exercicios.splice(+b.dataset.e, 1); renderDraft(); });
-    D.querySelectorAll(".d-exadd").forEach((b) => b.onclick = () => { syncDraftFromDom(); (p.sessoes[+b.dataset.s].exercicios ||= []).push({ series: 3, reps: "10", intervalo_s: 90 }); renderDraft(); });
-    D.querySelector(".d-sesadd").onclick = () => { syncDraftFromDom(); (p.sessoes ||= []).push({ dia: "", foco: "", exercicios: [] }); renderDraft(); };
-    D.querySelector(".d-cancel").onclick = () => { draftPlano = null; draftId = null; $("tpDraft").innerHTML = ""; };
-    D.querySelector(".d-save").onclick = saveTreino;
+    document.querySelectorAll(".tr-sesbtn").forEach((b) => b.onclick = () => { treinoSessaoSel = +b.dataset.i; renderTreino(); });
+    document.querySelectorAll(".tr-check").forEach((c) => c.onchange = () => toggleEx(+c.dataset.i, c.checked));
+    const bf = $("btnFinalizarTreino"); if (bf) bf.onclick = finalizarTreino;
+    const bn = $("btnNovoTreino"); if (bn) bn.onclick = () => { treinoMeu = null; renderTreino(); };
   }
 
-  async function saveTreino() {
-    syncDraftFromDom();
-    const p = draftPlano;
-    if (!p.nome) { setMsg($("dSaveMsg"), "Dê um nome ao treino.", "err"); return; }
-    loading($("dSaveMsg"), "Salvando...");
+  function treinoGenFormHtml() {
+    return `<div class="card">
+      <div class="serif" style="font-size:20px;">Gerar meu treino</div>
+      <div style="font-size:12.5px; color:var(--muted3); margin-top:2px;">A IA monta a partir da nossa biblioteca de exercícios. É uma sugestão e não substitui um profissional.</div>
+      <div class="form-grid" style="margin-top:12px;">
+        <label class="col-span"><span class="flabel">Objetivo</span><input id="tg_objetivo" class="field" placeholder="ex.: hipertrofia e perda de gordura" /></label>
+        <label><span class="flabel">Nível</span><select id="tg_nivel" class="field"><option value="iniciante">iniciante</option><option value="intermediario" selected>intermediario</option><option value="avancado">avancado</option></select></label>
+        <label><span class="flabel">Dias por semana</span><input id="tg_dias" class="field num" type="number" value="3" min="1" max="7" /></label>
+        <label class="col-span"><span class="flabel">Equipamento</span><input id="tg_equip" class="field" placeholder="ex.: academia completa / casa com halteres" /></label>
+      </div>
+      <div style="height:12px"></div>
+      <button id="btnGerarMeuTreino" class="btn btn-primary" style="width:100%; height:48px; justify-content:center;">Gerar com IA</button>
+      <div id="tgMsg2" class="msg"></div>
+    </div>`;
+  }
+  function wireTreinoGen() {
+    $("btnGerarMeuTreino").onclick = async () => {
+      loading($("tgMsg2"), "Montando seu treino com IA...");
+      $("btnGerarMeuTreino").disabled = true;
+      try {
+        const res = await api("/api/treino/gerar", { method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ objetivo: $("tg_objetivo").value.trim(), nivel: $("tg_nivel").value,
+            dias_por_semana: Number($("tg_dias").value) || 3, equipamento: $("tg_equip").value.trim() }) });
+        treinoMeu = res.plano; treinoSessaoSel = 0;
+        renderTreino();
+      } catch (e) { setMsg($("tgMsg2"), e.message, "err"); $("btnGerarMeuTreino").disabled = false; }
+    };
+  }
+
+  async function toggleEx(i, feito) {
+    const chave = treinoSessaoSel + ":" + i;
     try {
-      if (draftId) await api("/api/treinos/" + draftId, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(p) });
-      else await api("/api/treinos", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(p) });
-      treinos = await api("/api/treinos");
-      draftPlano = null; draftId = null; $("tpDraft").innerHTML = "";
-      setMsg($("tpMsg"), "Plano salvo.", "ok");
-      renderTpList();
-    } catch (e) { setMsg($("dSaveMsg"), e.message, "err"); }
+      await api("/api/treino/registrar", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chave, feito, sessao_idx: treinoSessaoSel, plano_id: treinoMeu.id }) });
+      treinoHoje = await api("/api/treino/today");
+      renderTreino();
+    } catch (e) { setMsg($("treinoMsg"), e.message, "err"); }
+  }
+  async function finalizarTreino() {
+    const total = (treinoMeu.sessoes[treinoSessaoSel].exercicios || []).length;
+    loading($("treinoMsg"), "Finalizando...");
+    try {
+      await api("/api/treino/finalizar", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessao_idx: treinoSessaoSel, plano_id: treinoMeu.id, total_exercicios: total }) });
+      treinoHoje = await api("/api/treino/today");
+      setMsg($("treinoMsg"), "Treino finalizado! Check-in registrado.", "ok");
+      renderTreino();
+    } catch (e) { setMsg($("treinoMsg"), e.message, "err"); }
   }
 
   function renderBiblioList() {

@@ -1351,13 +1351,52 @@ Distribua os exercícios pelos dias conforme o foco; séries, repetições e \
 intervalos coerentes com o nível informado. Use somente exercicio_id da lista."""
 
 
-@app.route("/api/treino/gerar", methods=["POST"])
+LIB_SEED_SYSTEM = """Gere uma biblioteca de exercícios de treino comuns e seguros \
+para academia e casa. Responda APENAS JSON:
+{"exercicios":[{"nome":string,"grupo_muscular":string,"padrao_movimento":string,
+"equipamento":string,"dificuldade":"iniciante"|"intermediario"|"avancado",
+"instrucoes":string,"substituicoes":[string]}]}
+Cubra peito, costas, pernas, glúteos, ombros, bíceps, tríceps e core, com variações \
+de equipamento (barra, halteres, máquina, polia, peso corporal). Cerca de 24 itens."""
+
+
+@app.route("/api/exercicios/seed", methods=["POST"])
 @require_staff
+def exercicios_seed():
+    """Popula a biblioteca com exercícios gerados por IA (marcados como aprovados)."""
+    try:
+        resp = gemini(system_instruction=LIB_SEED_SYSTEM).generate_content(
+            "Gere a biblioteca inicial de exercícios.")
+        parsed = _safe_json((resp.text or "").strip())
+    except Exception as e:  # noqa: BLE001
+        return jsonify({"error": str(e)}), 502
+    existentes = {(d.to_dict() or {}).get("nome", "").strip().lower()
+                  for d in db().collection("exercicios").limit(500).stream()}
+    agora = datetime.datetime.utcnow().isoformat()
+    criados = 0
+    for ex in (parsed.get("exercicios") or []):
+        nome = (ex.get("nome") or "").strip()
+        if not nome or nome.lower() in existentes:
+            continue
+        data = _clean_exercicio(ex)
+        data["nome"] = nome
+        data["status"] = "aprovado"
+        data.update({"versao": 1, "criado_por": "ia-seed", "criado_em": agora,
+                     "atualizado_por": g.email, "atualizado_em": agora})
+        db().collection("exercicios").add(data)
+        existentes.add(nome.lower())
+        criados += 1
+    return jsonify({"ok": True, "criados": criados})
+
+
+@app.route("/api/treino/gerar", methods=["POST"])
+@require_auth
 def treino_gerar():
+    """Gera um plano de treino sugestivo para o usuário a partir da biblioteca."""
     d = request.get_json(silent=True) or {}
     aprovados = _exercicios_aprovados()
     if not aprovados:
-        return jsonify({"error": "Nenhum exercício aprovado na biblioteca ainda."}), 400
+        return jsonify({"error": "A biblioteca de exercícios ainda está vazia. Peça à equipe para populá-la."}), 400
 
     catalogo = [{"id": v["id"], "nome": v["nome"], "grupo": v["grupo_muscular"],
                  "equipamento": v["equipamento"], "padrao": v["padrao_movimento"]}
@@ -1388,10 +1427,74 @@ def treino_gerar():
             else:
                 descartados += 1
         s["exercicios"] = validos
-    plano["_descartados"] = descartados
-    plano["aviso"] = ("Rascunho gerado por IA a partir da biblioteca aprovada. "
-                      "Requer revisão e aprovação de um personal antes de publicar.")
+    plano["descartados"] = descartados
+    plano["aviso"] = ("Plano sugerido por IA a partir da biblioteca. É uma sugestão e "
+                      "não substitui a orientação de um profissional de educação física.")
+    plano["criado_em"] = datetime.datetime.utcnow().isoformat()
+    ref = db().collection("usuarios").document(g.uid).collection("treinos").add(plano)
+    plano["id"] = ref[1].id
     return jsonify({"plano": plano})
+
+
+@app.route("/api/treino/meu", methods=["GET"])
+@require_auth
+def treino_meu():
+    """Plano de treino mais recente do usuário."""
+    docs = list(db().collection("usuarios").document(g.uid).collection("treinos")
+                .order_by("criado_em", direction=firestore.Query.DESCENDING).limit(1).stream())
+    if not docs:
+        return jsonify({})
+    p = docs[0].to_dict() or {}
+    p["id"] = docs[0].id
+    return jsonify(p)
+
+
+@app.route("/api/treino/today", methods=["GET"])
+@require_auth
+def treino_today():
+    dia = now_local().strftime("%Y-%m-%d")
+    d = (db().collection("usuarios").document(g.uid)
+         .collection("treino_sessoes").document(dia).get().to_dict()) or {}
+    return jsonify(d)
+
+
+@app.route("/api/treino/registrar", methods=["POST"])
+@require_auth
+def treino_registrar():
+    """Marca/desmarca um exercício como feito na sessão de hoje."""
+    body = request.get_json(silent=True) or {}
+    dia = now_local().strftime("%Y-%m-%d")
+    ref = db().collection("usuarios").document(g.uid).collection("treino_sessoes").document(dia)
+    data = ref.get().to_dict() or {"data": dia, "feitos": {}}
+    data["sessao_idx"] = body.get("sessao_idx")
+    data["plano_id"] = body.get("plano_id")
+    feitos = data.get("feitos") or {}
+    chave = str(body.get("chave"))
+    if body.get("feito"):
+        feitos[chave] = True
+    else:
+        feitos.pop(chave, None)
+    data["feitos"] = feitos
+    data["atualizado_em"] = datetime.datetime.utcnow().isoformat()
+    ref.set(data)
+    return jsonify({"ok": True, "feitos": len(feitos)})
+
+
+@app.route("/api/treino/finalizar", methods=["POST"])
+@require_auth
+def treino_finalizar():
+    """Finaliza a sessão de hoje (check-in do dia)."""
+    body = request.get_json(silent=True) or {}
+    dia = now_local().strftime("%Y-%m-%d")
+    ref = db().collection("usuarios").document(g.uid).collection("treino_sessoes").document(dia)
+    data = ref.get().to_dict() or {"data": dia, "feitos": {}}
+    data["sessao_idx"] = body.get("sessao_idx")
+    data["plano_id"] = body.get("plano_id")
+    data["total_exercicios"] = body.get("total_exercicios")
+    data["finalizado"] = True
+    data["finalizado_em"] = datetime.datetime.utcnow().isoformat()
+    ref.set(data, merge=True)
+    return jsonify({"ok": True})
 
 
 @app.route("/api/treinos", methods=["GET"])
