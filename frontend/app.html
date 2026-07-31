@@ -162,30 +162,26 @@
   </div>
 
   <div class="card rise" style="margin-top:22px; padding:26px 24px;">
-    <!-- Passo 1: PDFs -->
+    <!-- Passo 1: escolha IA x manual -->
     <div id="step1">
-      <div style="font-size:12.5px; font-weight:600; color:var(--muted); margin-bottom:8px;">Bioimpedância (opcional)</div>
-      <label class="dropzone" for="pdfInput">
-        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#14735A" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="margin:0 auto;"><path d="M12 16V4"></path><path d="M8 8l4-4 4 4"></path><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"></path></svg>
-        <div class="t1" id="dropTitle">Solte o PDF da bioimpedância</div>
-        <div class="t2">ou clique para procurar no dispositivo</div>
-      </label>
-      <input id="pdfInput" type="file" accept="application/pdf" style="display:none;" />
-      <div id="pdfMsg" class="msg"></div>
-
-      <div style="font-size:12.5px; font-weight:600; color:var(--muted); margin:18px 0 8px;">Exame de sangue (opcional)</div>
-      <label class="dropzone" for="bloodInput">
-        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#C0392B" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="margin:0 auto;"><path d="M12 2s5 5.5 5 10a5 5 0 0 1-10 0c0-4.5 5-10 5-10z"></path></svg>
-        <div class="t1" id="bloodTitle">Solte o PDF ou imagem do exame</div>
-        <div class="t2">a IA lê os marcadores e monta sua análise</div>
-      </label>
-      <input id="bloodInput" type="file" accept="application/pdf,image/*" style="display:none;" />
-      <div id="bloodMsg" class="msg"></div>
-
-      <div class="note-soft" style="margin-top:16px;">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#858B85" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex:none; margin-top:1px;"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M6 6l2 2M16 16l2 2M18 6l-2 2M8 16l-2 2"></path></svg>
-        <div>A bioimpedância preenche peso, gordura e massa magra. O exame de sangue vira uma análise com os pontos mais importantes, na aba Análise. Os dois são opcionais.</div>
+      <div style="display:grid; gap:10px;">
+        <button id="btnModoIA" type="button" style="width:100%; text-align:left; font-family:inherit; cursor:pointer; background:#fff; border:1px solid var(--line2); border-radius:14px; padding:16px 18px;">
+          <div class="serif" style="font-size:18px;">✨ Gerar via IA</div>
+          <div style="font-size:13px; color:var(--muted); margin-top:4px;">Usa seus exames e medições já registrados. Você só confirma o objetivo e a rotina. Se ainda não registrou nada, preencha o pouco necessário.</div>
+        </button>
+        <button id="btnModoManual" type="button" style="width:100%; text-align:left; font-family:inherit; cursor:pointer; background:#fff; border:1px solid var(--line2); border-radius:14px; padding:16px 18px;">
+          <div class="serif" style="font-size:18px;">✍️ Preencher manualmente</div>
+          <div style="font-size:13px; color:var(--muted); margin-top:4px;">Você informa seus dados na mão e a IA monta a dieta.</div>
+        </button>
       </div>
+      <div class="note-soft" style="margin-top:14px;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#858B85" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex:none; margin-top:1px;"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M6 6l2 2M16 16l2 2M18 6l-2 2M8 16l-2 2"></path></svg>
+        <div>Não precisa anexar nada aqui. Para enviar bioimpedância ou exame de sangue, use <b>Registrar medição</b> ou a aba <b>Análise</b> — a dieta usa o que estiver registrado.</div>
+      </div>
+      <!-- inputs ocultos (compatibilidade; upload agora é em Registrar/Análise) -->
+      <input id="pdfInput" type="file" style="display:none;" /><input id="bloodInput" type="file" style="display:none;" />
+      <span id="dropTitle" class="hidden"></span><span id="bloodTitle" class="hidden"></span>
+      <div id="pdfMsg" class="hidden"></div><div id="bloodMsg" class="hidden"></div>
     </div>
 
     <!-- Passo 2: dados -->
@@ -501,7 +497,7 @@
   const EXTRA_FIELDS = ["objetivo","rotina_treino","rotina_alimentar","restricoes"];
 
   let token = null, profile = {}, diets = [], medicoes = [], consumoHoje = {};
-  let step = 1, metric = "peso", selectedPrazo = "mensal", bloodData = null, isAdmin = false, isStaff = false;
+  let step = 1, metric = "peso", selectedPrazo = "mensal", bloodData = null, isAdmin = false, isStaff = false, modoDieta = "ia";
   let exercicios = [], treinos = [], draftPlano = null, draftId = null;
 
   onAuthStateChanged(auth, async (user) => {
@@ -1611,7 +1607,7 @@
 
   // ---------- WIZARD ----------
   const STEPS = [
-    { title: "Importar bioimpedância", sub: "Tem o PDF do exame? A IA preenche seus dados em segundos. Se não tiver, é só pular." },
+    { title: "Como montar sua dieta?", sub: "Escolha gerar automaticamente com IA (usa seus dados já registrados) ou preencher manualmente." },
     { title: "Seus dados", sub: "Confira o que veio do exame e ajuste o que precisar." },
     { title: "Objetivo e rotina", sub: "Quanto mais preciso você for sobre treinos e horários, melhor o plano encaixa no seu dia." },
     { title: "Notificações", sub: "Receba um lembrete de cada refeição no horário, direto no navegador." },
@@ -1656,20 +1652,20 @@
     $("stepSub").textContent = STEPS[step - 1].sub;
     Array.from($("stepsBar").children).forEach((d, i) => d.classList.toggle("on", i < step));
     [1,2,3,4].forEach((n) => $("step" + n).classList.toggle("hidden", n !== step));
-    $("btnPrev").textContent = step === 1 ? "Voltar" : "Voltar";
-    $("btnNext").textContent = step === 1 ? "Analisar PDF e continuar"
-      : step === 2 ? "Continuar" : step === 3 ? "Gerar minha dieta" : "Concluir";
+    $("btnNext").style.display = step === 1 ? "none" : "";  // passo 1 usa os botões de escolha
+    $("btnNext").textContent = step === 2 ? "Continuar" : step === 3 ? "Gerar minha dieta" : "Concluir";
     $("btnNext").disabled = false;
   }
-  $("btnPrev").onclick = () => { if (step === 1) showView("home"); else { step--; renderStep(); } };
+  $("btnModoIA").onclick = () => { modoDieta = "ia"; step = 3; renderStep(); };
+  $("btnModoManual").onclick = () => { modoDieta = "manual"; step = 2; renderStep(); };
+  $("btnPrev").onclick = () => {
+    if (step === 1) showView("home");
+    else if (step === 3 && modoDieta === "ia") { step = 1; renderStep(); }
+    else { step--; renderStep(); }
+  };
   $("btnNext").onclick = () => onNext();
 
   async function onNext() {
-    if (step === 1) {
-      const file = $("pdfInput").files[0];
-      if (file) { await analyzePdf(file); }
-      step = 2; renderStep(); return;
-    }
     if (step === 2) { step = 3; renderStep(); return; }
     if (step === 3) { await generateDiet(); return; }
     if (step === 4) { await loadAll(); showView("home"); return; }
