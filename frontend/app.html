@@ -17,6 +17,7 @@
     <div class="brand">
       <svg class="logo" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 3v9l6 3"></path></svg>
       <div class="name">Minha Dieta</div>
+      <span id="appVersion" style="font-size:11px; color:var(--muted3); font-family:'JetBrains Mono',monospace; margin-left:8px;">v?</span>
     </div>
     <div style="display:flex; align-items:center; gap:8px;">
       <div class="userchip">
@@ -517,6 +518,17 @@
   });
 
   $("btnLogout").onclick = () => signOut(auth);
+
+  // Selo de versão: HTML espera "v2026-07-31-b"; o /health diz o que o servidor tem.
+  const HTML_VERSION = "2026-07-31-b";
+  (async () => {
+    const el = $("appVersion");
+    if (el) el.textContent = "html " + HTML_VERSION;
+    try {
+      const h = await fetch(API_BASE + "/health", { cache: "no-store" }).then((r) => r.json());
+      if (el) el.textContent = "v" + (h.version || "?") + (h.version === HTML_VERSION ? " ✓" : " ⚠ HTML " + HTML_VERSION);
+    } catch (_) {}
+  })();
 
   // recarrega os dados ao voltar para a aba (ex.: depois de responder no Telegram)
   let lastSync = 0;
