@@ -341,7 +341,7 @@ def require_staff(f):
 # ---------------------------------------------------------------------------
 # Páginas
 # ---------------------------------------------------------------------------
-APP_VERSION = "2026-07-31-c"  # muda a cada deploy relevante p/ confirmarmos o que está no ar
+APP_VERSION = "2026-07-31-d"  # muda a cada deploy relevante p/ confirmarmos o que está no ar
 
 
 def _no_cache(resp):

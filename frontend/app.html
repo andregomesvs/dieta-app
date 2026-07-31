@@ -520,7 +520,7 @@
   $("btnLogout").onclick = () => signOut(auth);
 
   // Selo de versão: HTML espera "v2026-07-31-b"; o /health diz o que o servidor tem.
-  const HTML_VERSION = "2026-07-31-c";
+  const HTML_VERSION = "2026-07-31-d";
   (async () => {
     const el = $("appVersion");
     if (el) el.textContent = "html " + HTML_VERSION;
@@ -1271,11 +1271,11 @@
     renderHoje();
   }
   async function registrarConsumo(idx, status, itens, kcal) {
-    hojeEditing = false;  // libera o re-render após registrar
     const body = { idx, status };
     if (itens != null) body.itens = itens;
     if (kcal != null) body.kcal = kcal;
     await api("/api/consumo/registrar", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    hojeEditing = false;  // só libera o re-render DEPOIS que gravou (não durante)
     await reloadHoje();
   }
   function attachHojeHandlers() {
@@ -1318,8 +1318,10 @@
       loading(msg, "Estimando...");
       // timeout rígido de 5s: passou disso, o spinner PARA e o usuário digita/salva manual
       const ctrl = new AbortController();
-      const limite = new Promise((_, rej) =>
-        setTimeout(() => { ctrl.abort(); rej(new Error("timeout")); }, 5000));
+      let timer;
+      const limite = new Promise((_, rej) => {
+        timer = setTimeout(() => { ctrl.abort(); rej(new Error("timeout")); }, 5000);
+      });
       try {
         const r = await Promise.race([
           api("/api/estimate-kcal", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ texto: txt }), signal: ctrl.signal }),
@@ -1334,16 +1336,24 @@
       } catch (e) {
         setMsg(msg, "A estimativa não respondeu em 5s. Digite as calorias no campo e clique em Salvar.", "err");
       } finally {
-        bEst.disabled = false;  // botão sempre volta ao normal
+        clearTimeout(timer);      // evita o abort tardio depois de já ter respondido
+        bEst.disabled = false;    // botão sempre volta ao normal
       }
     };
     q(".trSalvar").onclick = async () => {
+      const bSalvar = q(".trSalvar");
       const txt = q(".trTxt").value.trim();
       const kcal = q(".trKcal").value.trim();
       if (!kcal) { setMsg(q(".trMsg"), "Informe as calorias (ou toque em Estimar).", "err"); return; }
+      bSalvar.disabled = true;
       loading(q(".trMsg"), "Salvando...");
-      try { await registrarConsumo(i, "substituiu", txt, Number(kcal)); }
-      catch (e) { hojeEditing = true; setMsg(q(".trMsg"), e.message, "err"); }
+      try {
+        await registrarConsumo(i, "substituiu", txt, Number(kcal));
+      } catch (e) {
+        hojeEditing = true;
+        bSalvar.disabled = false;
+        setMsg(q(".trMsg"), "Não salvou: " + e.message, "err");
+      }
     };
   }
 
