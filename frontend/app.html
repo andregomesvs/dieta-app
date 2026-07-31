@@ -520,7 +520,7 @@
   $("btnLogout").onclick = () => signOut(auth);
 
   // Selo de versão: HTML espera "v2026-07-31-b"; o /health diz o que o servidor tem.
-  const HTML_VERSION = "2026-07-31-d";
+  const HTML_VERSION = "2026-07-31-e";
   (async () => {
     const el = $("appVersion");
     if (el) el.textContent = "html " + HTML_VERSION;
@@ -1235,7 +1235,7 @@
         <div class="track" style="margin-top:12px;"><div class="fill" style="width:${pct.toFixed(0)}%; ${acima ? "background:var(--danger);" : ""}"></div></div>
         <div style="margin-top:6px; font-size:12px; color:${acima ? "var(--danger)" : "var(--muted2)"};">${acima ? "Acima do alvo em " + (total - alvo) + " kcal" : "Faltam " + Math.max(0, alvo - total) + " kcal"}</div>`;
     }
-    const stLabel = { cumpriu: "Cumprida", substituiu: "Trocada", pulou: "Pulada" };
+    const stLabel = { cumpriu: "Cumprida", substituiu: "Cumpriu parcialmente", pulou: "Pulada" };
     const stColor = { cumpriu: "var(--green)", substituiu: "#B07A1E", pulou: "var(--muted2)" };
     html += `<div style="margin-top:14px; display:grid; gap:8px;">`;
     planned.forEach((r, i) => {
@@ -1246,7 +1246,7 @@
           <span class="mono" style="width:46px; color:var(--green); font-size:12.5px;">${esc(r.horario || "")}</span>
           <div style="flex:1; min-width:0;">
             <div style="font-size:14px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${esc(r.nome || "")}</div>
-            <div style="font-size:12px; color:${stColor[st] || "var(--muted3)"};">${stLabel[st] || "Pendente"}${st === "substituiu" && e.itens ? " · " + esc(e.itens) : ""}</div>
+            <div style="font-size:12px; color:${stColor[st] || "var(--muted3)"};">${stLabel[st] || "Pendente"}${st === "substituiu" && e.itens ? " — " + esc(e.itens) : ""}</div>
           </div>
           <span class="mono" style="color:var(--muted3); font-size:12px;">${e ? (e.kcal || 0) : (r.kcal_total || 0)} kcal</span>
         </div>
@@ -1341,18 +1341,32 @@
       }
     };
     q(".trSalvar").onclick = async () => {
-      const bSalvar = q(".trSalvar");
+      const bSalvar = q(".trSalvar"), msg = q(".trMsg");
       const txt = q(".trTxt").value.trim();
       const kcal = q(".trKcal").value.trim();
-      if (!kcal) { setMsg(q(".trMsg"), "Informe as calorias (ou toque em Estimar).", "err"); return; }
+      if (!kcal) { setMsg(msg, "Informe as calorias (ou toque em Estimar).", "err"); return; }
       bSalvar.disabled = true;
-      loading(q(".trMsg"), "Salvando...");
+      loading(msg, "Salvando...");
+      // timeout de 8s: o Salvar nunca fica preso; se falhar, mostra o motivo
+      const ctrl = new AbortController();
+      let timer;
+      const limite = new Promise((_, rej) => {
+        timer = setTimeout(() => { ctrl.abort(); rej(new Error("o servidor não respondeu em 8s")); }, 8000);
+      });
       try {
-        await registrarConsumo(i, "substituiu", txt, Number(kcal));
+        const body = JSON.stringify({ idx: i, status: "substituiu", itens: txt, kcal: Number(kcal) });
+        await Promise.race([
+          api("/api/consumo/registrar", { method: "POST", headers: { "Content-Type": "application/json" }, body, signal: ctrl.signal }),
+          limite,
+        ]);
+        clearTimeout(timer);
+        hojeEditing = false;   // libera o re-render só depois de gravar
+        await reloadHoje();    // fecha o formulário e mostra a refeição atualizada
       } catch (e) {
+        clearTimeout(timer);
         hojeEditing = true;
         bSalvar.disabled = false;
-        setMsg(q(".trMsg"), "Não salvou: " + e.message, "err");
+        setMsg(msg, "Não salvou: " + e.message, "err");
       }
     };
   }
