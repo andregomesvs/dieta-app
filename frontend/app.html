@@ -520,8 +520,10 @@
 
   // recarrega os dados ao voltar para a aba (ex.: depois de responder no Telegram)
   let lastSync = 0;
+  let hojeEditing = false;  // trava: não re-renderizar o card Hoje durante edição
   async function syncIfStale() {
     if (!auth.currentUser || document.visibilityState !== "visible") return;
+    if (hojeEditing) return;
     const now = Date.now();
     if (now - lastSync < 4000) return;
     lastSync = now;
@@ -1257,6 +1259,7 @@
     renderHoje();
   }
   async function registrarConsumo(idx, status, itens, kcal) {
+    hojeEditing = false;  // libera o re-render após registrar
     const body = { idx, status };
     if (itens != null) body.itens = itens;
     if (kcal != null) body.kcal = kcal;
@@ -1274,6 +1277,7 @@
     document.querySelectorAll(".act-troquei").forEach((b) => b.onclick = () => openTroca(+b.dataset.i, false));
   }
   function openTroca(i, corrigir) {
+    hojeEditing = true;  // impede o card de re-renderizar enquanto edita
     const box = $("hojesub-" + i);
     box.classList.remove("hidden");
     box.innerHTML = `<div style="margin-top:8px; padding:10px 12px; background:#fff; border:1px solid var(--line); border-radius:10px;">
@@ -1281,13 +1285,15 @@
         <button class="chip-sm reOk">✅ Cumpri</button><button class="chip-sm rePulei">⏭️ Pulei</button></div>
         <div style="font-size:11.5px; color:var(--muted3); margin-bottom:6px;">ou registre o que comeu:</div>` : ""}
       <input class="field trTxt" placeholder="o que você comeu" style="height:42px;" />
-      <div style="display:flex; gap:6px; margin-top:6px;">
+      <div style="display:flex; gap:6px; margin-top:6px; flex-wrap:wrap;">
         <div class="field-unit" style="width:110px;"><input class="field num trKcal" type="number" placeholder="kcal" style="height:42px; padding-right:42px;" /><span class="u">kcal</span></div>
         <button class="btn btn-ghost trEstimar" style="height:42px;">Estimar</button>
         <button class="btn btn-primary trSalvar" style="height:42px; flex:1; justify-content:center;">Salvar</button>
       </div>
+      <button class="chip-sm trCancelar" style="margin-top:8px;">Cancelar</button>
       <div class="msg trMsg"></div></div>`;
     const q = (s) => box.querySelector(s);
+    q(".trCancelar").onclick = () => { hojeEditing = false; renderHoje(); };
     if (corrigir) {
       q(".reOk").onclick = () => registrarConsumo(i, "cumpriu");
       q(".rePulei").onclick = () => registrarConsumo(i, "pulou");
@@ -1295,12 +1301,15 @@
     q(".trEstimar").onclick = async () => {
       const txt = q(".trTxt").value.trim();
       if (!txt) { setMsg(q(".trMsg"), "Escreva o que comeu primeiro.", "err"); return; }
+      const bEst = q(".trEstimar");
+      bEst.disabled = true;
       loading(q(".trMsg"), "Estimando...");
       try {
         const r = await api("/api/estimate-kcal", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ texto: txt }) });
-        if (r.ok) { q(".trKcal").value = r.kcal_total; setMsg(q(".trMsg"), "~" + r.kcal_total + " kcal. Ajuste se quiser e salve.", "ok"); }
-        else setMsg(q(".trMsg"), "Não consegui estimar. Digite as calorias.", "err");
+        if (r.ok) { q(".trKcal").value = r.kcal_total; setMsg(q(".trMsg"), "~" + r.kcal_total + " kcal. Edite o texto e estime de novo, ou salve.", "ok"); }
+        else setMsg(q(".trMsg"), "Não consegui estimar. Digite as calorias e salve.", "err");
       } catch (e) { setMsg(q(".trMsg"), e.message, "err"); }
+      finally { bEst.disabled = false; }
     };
     q(".trSalvar").onclick = async () => {
       const txt = q(".trTxt").value.trim();
@@ -1308,7 +1317,7 @@
       if (!kcal) { setMsg(q(".trMsg"), "Informe as calorias (ou toque em Estimar).", "err"); return; }
       loading(q(".trMsg"), "Salvando...");
       try { await registrarConsumo(i, "substituiu", txt, Number(kcal)); }
-      catch (e) { setMsg(q(".trMsg"), e.message, "err"); }
+      catch (e) { hojeEditing = true; setMsg(q(".trMsg"), e.message, "err"); }
     };
   }
 
