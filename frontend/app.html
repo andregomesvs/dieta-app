@@ -497,10 +497,13 @@
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
   import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+  import { getFirestore, doc, getDoc, runTransaction }
+    from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
   import { firebaseConfig, API_BASE } from "/static/js/firebase-config.js";
 
   const app = initializeApp(firebaseConfig);
   const auth = getAuth(app);
+  const clientDb = getFirestore(app);
   const $ = (id) => document.getElementById(id);
 
   const PROFILE_FIELDS = ["nome","sexo","idade","altura_cm","peso_kg",
@@ -530,7 +533,7 @@
   $("btnLogout").onclick = () => signOut(auth);
 
   // Selo de versão: HTML espera "v2026-07-31-b"; o /health diz o que o servidor tem.
-  const HTML_VERSION = "2026-07-31-h";
+  const HTML_VERSION = "2026-07-31-i";
   (async () => {
     const el = $("appVersion");
     if (el) el.textContent = "html " + HTML_VERSION;
@@ -549,9 +552,13 @@
     const now = Date.now();
     if (now - lastSync < 4000) return;
     lastSync = now;
+    if (!$("view-diario").classList.contains("hidden")) {
+      try { consumoHoje = await carregarConsumoDireto(); } catch (_) {}
+      renderDiario();
+      return;
+    }
     try { await loadAll(); } catch (_) {}
     if (!$("view-home").classList.contains("hidden")) renderHome();
-    if (!$("view-diario").classList.contains("hidden")) renderDiario();
   }
   document.addEventListener("visibilitychange", syncIfStale);
   window.addEventListener("focus", syncIfStale);
@@ -1231,6 +1238,108 @@
     renderAnaliseTeaser();
   }
 
+  function diaLocal() {
+    const agora = new Date();
+    const partes = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit",
+    }).formatToParts(agora).reduce((acc, p) => { acc[p.type] = p.value; return acc; }, {});
+    return `${partes.year}-${partes.month}-${partes.day}`;
+  }
+
+  function refConsumoHoje() {
+    if (!auth.currentUser) throw new Error("Sua sessão expirou. Entre novamente.");
+    return doc(clientDb, "usuarios", auth.currentUser.uid, "consumo", diaLocal());
+  }
+
+  function erroFirebaseDiario(e) {
+    if (e && e.code === "permission-denied") {
+      return new Error("O Firebase bloqueou o Diário. Publique as novas regras do Firestore e tente novamente.");
+    }
+    if (e && (e.code === "unavailable" || e.code === "deadline-exceeded")) {
+      return new Error("O Firebase está indisponível no momento. Verifique sua conexão e tente novamente.");
+    }
+    return e instanceof Error ? e : new Error(String(e || "Erro ao acessar o Firebase."));
+  }
+
+  function limitarTempo(promise, ms) {
+    let timer;
+    const limite = new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error("O Firebase não respondeu. Tente novamente.")), ms);
+    });
+    return Promise.race([promise, limite]).finally(() => clearTimeout(timer));
+  }
+
+  async function carregarConsumoDireto() {
+    try {
+      const snap = await limitarTempo(getDoc(refConsumoHoje()), 10000);
+      return snap.exists() ? snap.data() : {};
+    } catch (e) {
+      throw erroFirebaseDiario(e);
+    }
+  }
+
+  async function salvarConsumoDireto(idx, status, itens, kcal) {
+    const dieta = (diets[0] && diets[0].dieta) || {};
+    const planejadas = dieta.refeicoes || [];
+    if (!Number.isInteger(idx) || idx < 0 || idx >= planejadas.length) {
+      throw new Error("Refeição não encontrada no plano atual.");
+    }
+    const planejada = planejadas[idx] || {};
+    let entry;
+    if (status === "cumpriu") {
+      entry = { nome: planejada.nome || "Refeição", status, kcal: Number(planejada.kcal_total) || 0 };
+    } else if (status === "pulou") {
+      entry = { nome: planejada.nome || "Refeição", status, kcal: 0 };
+    } else {
+      const texto = String(itens || "").trim();
+      const valor = Number(kcal);
+      if (!texto) throw new Error("Informe o que você comeu.");
+      if (!Number.isFinite(valor) || valor < 0) throw new Error("Informe calorias válidas.");
+      entry = { nome: planejada.nome || "Refeição", status: "substituiu", itens: texto, kcal: Math.round(valor) };
+    }
+
+    const ref = refConsumoHoje();
+    try {
+      return await limitarTempo(runTransaction(clientDb, async (transaction) => {
+        const snap = await transaction.get(ref);
+        const atual = snap.exists() ? snap.data() : {};
+        const refeicoes = Object.assign({}, atual.refeicoes || {});
+        refeicoes[String(idx)] = entry;
+        const total = Object.values(refeicoes).reduce((soma, refeicao) => soma + (Number(refeicao.kcal) || 0), 0);
+        const salvo = Object.assign({}, atual, {
+          data: diaLocal(),
+          refeicoes,
+          total_kcal: total,
+          alvo_kcal: atual.alvo_kcal || dieta.calorias_alvo_dia || null,
+          atualizado_em: new Date().toISOString(),
+        });
+        transaction.set(ref, salvo);
+        return { ok: true, idx, entry, total_kcal: total, alvo_kcal: salvo.alvo_kcal };
+      }), 10000);
+    } catch (e) {
+      throw erroFirebaseDiario(e);
+    }
+  }
+
+  async function removerConsumoDireto(idx) {
+    const ref = refConsumoHoje();
+    try {
+      return await limitarTempo(runTransaction(clientDb, async (transaction) => {
+        const snap = await transaction.get(ref);
+        if (!snap.exists()) return {};
+        const atual = snap.data() || {};
+        const refeicoes = Object.assign({}, atual.refeicoes || {});
+        delete refeicoes[String(idx)];
+        const total = Object.values(refeicoes).reduce((soma, refeicao) => soma + (Number(refeicao.kcal) || 0), 0);
+        const salvo = Object.assign({}, atual, { refeicoes, total_kcal: total, atualizado_em: new Date().toISOString() });
+        transaction.set(ref, salvo);
+        return salvo;
+      }), 10000);
+    } catch (e) {
+      throw erroFirebaseDiario(e);
+    }
+  }
+
   async function openDiario() {
     diarioEditing = false;
     showView("diario");
@@ -1239,7 +1348,7 @@
     });
     loading($("diarioMsg"), "Carregando diário...");
     try {
-      consumoHoje = await api("/api/consumo/today");
+      consumoHoje = await carregarConsumoDireto();
       setMsg($("diarioMsg"), "", "");
       renderDiario();
     } catch (e) {
@@ -1308,7 +1417,7 @@
   }
 
   async function reloadDiario() {
-    consumoHoje = await api("/api/consumo/today");
+    consumoHoje = await carregarConsumoDireto();
     renderDiario();
   }
   function aplicarConsumoSalvo(idx, status, itens, kcal, result) {
@@ -1325,15 +1434,8 @@
     if (result.alvo_kcal != null) consumoHoje.alvo_kcal = result.alvo_kcal;
   }
   async function registrarConsumo(idx, status, itens, kcal, signal) {
-    const body = { idx, status, diet_id: (diets[0] && diets[0].id) || null };
-    if (itens != null) body.itens = itens;
-    if (kcal != null) body.kcal = kcal;
-    const result = await api("/api/consumo/registrar", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-      signal,
-    });
+    if (signal && signal.aborted) throw new Error("Operação cancelada.");
+    const result = await salvarConsumoDireto(idx, status, itens, kcal);
     aplicarConsumoSalvo(idx, status, itens, kcal, result);
     diarioEditing = false;
     renderDiario();
@@ -1358,8 +1460,8 @@
       b.disabled = true;
       loading($("diarioMsg"), "Removendo registro...");
       try {
-        await api("/api/consumo/remover", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ idx: +b.dataset.i }) });
-        await reloadDiario();
+        consumoHoje = await removerConsumoDireto(+b.dataset.i);
+        renderDiario();
         setMsg($("diarioMsg"), "Registro removido.", "ok");
       } catch (e) {
         setMsg($("diarioMsg"), "Não foi possível remover: " + e.message, "err");
