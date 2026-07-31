@@ -341,24 +341,35 @@ def require_staff(f):
 # ---------------------------------------------------------------------------
 # Páginas
 # ---------------------------------------------------------------------------
+APP_VERSION = "2026-07-31-a"  # muda a cada deploy relevante p/ confirmarmos o que está no ar
+
+
+def _no_cache(resp):
+    # impede o navegador de servir uma versão antiga do HTML após um deploy
+    resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    resp.headers["Pragma"] = "no-cache"
+    resp.headers["Expires"] = "0"
+    return resp
+
+
 @app.route("/")
 def index():
-    return send_from_directory(FRONTEND_DIR, "index.html")
+    return _no_cache(send_from_directory(FRONTEND_DIR, "index.html"))
 
 
 @app.route("/app")
 def dashboard():
-    return send_from_directory(FRONTEND_DIR, "app.html")
+    return _no_cache(send_from_directory(FRONTEND_DIR, "app.html"))
 
 
 @app.route("/static/<path:path>")
 def static_files(path):
-    return send_from_directory(os.path.join(FRONTEND_DIR, "static"), path)
+    return _no_cache(send_from_directory(os.path.join(FRONTEND_DIR, "static"), path))
 
 
 @app.route("/health")
 def health():
-    return jsonify({"status": "ok", "model": GEMINI_MODEL})
+    return jsonify({"status": "ok", "model": GEMINI_MODEL, "version": APP_VERSION})
 
 
 @app.route("/models")
