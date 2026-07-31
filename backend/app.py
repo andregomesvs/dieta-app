@@ -341,7 +341,7 @@ def require_staff(f):
 # ---------------------------------------------------------------------------
 # Páginas
 # ---------------------------------------------------------------------------
-APP_VERSION = "2026-07-31-b"  # muda a cada deploy relevante p/ confirmarmos o que está no ar
+APP_VERSION = "2026-07-31-c"  # muda a cada deploy relevante p/ confirmarmos o que está no ar
 
 
 def _no_cache(resp):
@@ -1002,7 +1002,7 @@ def estimate_calories(text):
               f"Comida: {text}")
     try:
         # timeout curto: se o Gemini demorar, falha rápido em vez de prender o worker
-        resp = gemini().generate_content(prompt, request_options={"timeout": 30})
+        resp = gemini().generate_content(prompt, request_options={"timeout": 8})
         parsed = _safe_json((resp.text or "").strip())
         if parsed.get("_parse_error"):
             return {"ok": False, "erro": "resposta não estruturada"}

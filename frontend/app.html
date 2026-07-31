@@ -520,7 +520,7 @@
   $("btnLogout").onclick = () => signOut(auth);
 
   // Selo de versão: HTML espera "v2026-07-31-b"; o /health diz o que o servidor tem.
-  const HTML_VERSION = "2026-07-31-b";
+  const HTML_VERSION = "2026-07-31-c";
   (async () => {
     const el = $("appVersion");
     if (el) el.textContent = "html " + HTML_VERSION;
@@ -1311,17 +1311,31 @@
       q(".rePulei").onclick = () => registrarConsumo(i, "pulou");
     }
     q(".trEstimar").onclick = async () => {
+      const msg = q(".trMsg"), bEst = q(".trEstimar");
       const txt = q(".trTxt").value.trim();
-      if (!txt) { setMsg(q(".trMsg"), "Escreva o que comeu primeiro.", "err"); return; }
-      const bEst = q(".trEstimar");
+      if (!txt) { setMsg(msg, "Escreva o que comeu primeiro.", "err"); return; }
       bEst.disabled = true;
-      loading(q(".trMsg"), "Estimando...");
+      loading(msg, "Estimando...");
+      // timeout rígido de 5s: passou disso, o spinner PARA e o usuário digita/salva manual
+      const ctrl = new AbortController();
+      const limite = new Promise((_, rej) =>
+        setTimeout(() => { ctrl.abort(); rej(new Error("timeout")); }, 5000));
       try {
-        const r = await api("/api/estimate-kcal", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ texto: txt }) });
-        if (r.ok) { q(".trKcal").value = r.kcal_total; setMsg(q(".trMsg"), "~" + r.kcal_total + " kcal. Edite o texto e estime de novo, ou salve.", "ok"); }
-        else setMsg(q(".trMsg"), "Não consegui estimar. Digite as calorias e salve.", "err");
-      } catch (e) { setMsg(q(".trMsg"), e.message, "err"); }
-      finally { bEst.disabled = false; }
+        const r = await Promise.race([
+          api("/api/estimate-kcal", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ texto: txt }), signal: ctrl.signal }),
+          limite,
+        ]);
+        if (r && r.ok && r.kcal_total) {
+          q(".trKcal").value = r.kcal_total;
+          setMsg(msg, "~" + r.kcal_total + " kcal. Ajuste se quiser e clique em Salvar.", "ok");
+        } else {
+          setMsg(msg, "Não consegui estimar. Digite as calorias no campo e salve.", "err");
+        }
+      } catch (e) {
+        setMsg(msg, "A estimativa não respondeu em 5s. Digite as calorias no campo e clique em Salvar.", "err");
+      } finally {
+        bEst.disabled = false;  // botão sempre volta ao normal
+      }
     };
     q(".trSalvar").onclick = async () => {
       const txt = q(".trTxt").value.trim();
