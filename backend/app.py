@@ -23,6 +23,7 @@ import json
 import base64
 import secrets
 import datetime
+import time
 import urllib.parse
 import urllib.request
 from functools import wraps
@@ -49,6 +50,7 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-flash-latest")
 CRED_PATH = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "./firebase-service-account.json")
 FIREBASE_PROJECT_ID = os.environ.get("FIREBASE_PROJECT_ID", "")
+FIRESTORE_RPC_TIMEOUT = 4
 # E-mails com acesso administrativo (somente leitura). Separados por vírgula.
 # Sem padrão embutido: defina ADMIN_EMAILS no ambiente (ex.: no Render).
 ADMIN_EMAILS = {e.strip().lower() for e in os.environ.get(
@@ -341,7 +343,7 @@ def require_staff(f):
 # ---------------------------------------------------------------------------
 # Páginas
 # ---------------------------------------------------------------------------
-APP_VERSION = "2026-07-31-f"  # muda a cada deploy relevante p/ confirmarmos o que está no ar
+APP_VERSION = "2026-07-31-g"  # muda a cada deploy relevante p/ confirmarmos o que está no ar
 
 
 def _no_cache(resp):
@@ -952,7 +954,9 @@ def update_consumo(uid, dia, idx, entry, diet=None):
     ``diet`` evita consultar novamente a dieta quando o chamador já a carregou.
     """
     ref = db().collection("usuarios").document(uid).collection("consumo").document(dia)
-    data = ref.get().to_dict() or {"data": dia, "refeicoes": {}}
+    # Sem limites explícitos, o cliente gRPC do Firestore pode repetir uma RPC
+    # por mais tempo que o timeout da interface, deixando o botão preso.
+    data = ref.get(timeout=FIRESTORE_RPC_TIMEOUT, retry=None).to_dict() or {"data": dia, "refeicoes": {}}
     if data.get("alvo_kcal") is None:
         source_diet = diet if diet is not None else (latest_diet(uid) or {})
         data["alvo_kcal"] = source_diet.get("calorias_alvo_dia")
@@ -961,7 +965,7 @@ def update_consumo(uid, dia, idx, entry, diet=None):
     data["refeicoes"] = refs
     data["total_kcal"] = sum((e.get("kcal") or 0) for e in refs.values())
     data["atualizado_em"] = datetime.datetime.utcnow().isoformat()
-    ref.set(data)
+    ref.set(data, timeout=FIRESTORE_RPC_TIMEOUT, retry=None)
     return data["total_kcal"]
 
 
@@ -989,7 +993,8 @@ def remove_pending(uid, dia, idx, diet_id):
 def diet_by_id(uid, diet_id):
     """Carrega a dieta pelo id; se faltar/não existir, usa a mais recente."""
     if diet_id:
-        doc = db().collection("usuarios").document(uid).collection("dietas").document(diet_id).get()
+        doc = (db().collection("usuarios").document(uid).collection("dietas")
+               .document(diet_id).get(timeout=FIRESTORE_RPC_TIMEOUT, retry=None))
         if doc.exists:
             return (doc.to_dict() or {}).get("dieta") or {}
     return latest_diet(uid) or {}
@@ -1200,7 +1205,19 @@ def consumo_registrar():
         entry = {"nome": nome, "status": "substituiu",
                  "itens": itens, "kcal": kcal}
 
-    total = update_consumo(g.uid, dia, idx, entry, diet=diet)
+    started = time.monotonic()
+    try:
+        total = update_consumo(g.uid, dia, idx, entry, diet=diet)
+    except Exception as exc:  # noqa: BLE001
+        elapsed_ms = round((time.monotonic() - started) * 1000)
+        print(f"[consumo] falha uid={g.uid} dia={dia} idx={idx} "
+              f"ms={elapsed_ms} erro={type(exc).__name__}: {exc}")
+        return jsonify({
+            "error": "Não foi possível gravar no Firestore. Tente novamente.",
+            "code": "firestore_write_failed",
+        }), 503
+    elapsed_ms = round((time.monotonic() - started) * 1000)
+    print(f"[consumo] salvo uid={g.uid} dia={dia} idx={idx} ms={elapsed_ms}")
     return jsonify({
         "ok": True,
         "idx": idx,

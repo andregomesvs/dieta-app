@@ -520,7 +520,7 @@
   $("btnLogout").onclick = () => signOut(auth);
 
   // Selo de versão: HTML espera "v2026-07-31-b"; o /health diz o que o servidor tem.
-  const HTML_VERSION = "2026-07-31-f";
+  const HTML_VERSION = "2026-07-31-g";
   (async () => {
     const el = $("appVersion");
     if (el) el.textContent = "html " + HTML_VERSION;
@@ -547,12 +547,20 @@
 
   // ---------- API ----------
   async function api(path, opts = {}) {
-    // pega um token sempre válido (o Firebase renova automaticamente se expirou)
-    if (auth.currentUser) {
-      try { token = await auth.currentUser.getIdToken(); } catch (_) {}
+    // O listener de autenticação já mantém um token válido em memória. Pedir
+    // getIdToken() antes de toda chamada pode ficar aguardando a rede do Google
+    // e impedir que o POST chegue ao Render. Só renovamos se o servidor responder 401.
+    const requestOpts = Object.assign({}, opts, {
+      headers: Object.assign({ "Authorization": "Bearer " + token }, opts.headers || {}),
+    });
+    let r = await fetch(API_BASE + path, requestOpts);
+    if (r.status === 401 && auth.currentUser && !(opts.signal && opts.signal.aborted)) {
+      token = await auth.currentUser.getIdToken(true);
+      requestOpts.headers = Object.assign({}, requestOpts.headers, {
+        "Authorization": "Bearer " + token,
+      });
+      r = await fetch(API_BASE + path, requestOpts);
     }
-    opts.headers = Object.assign({ "Authorization": "Bearer " + token }, opts.headers || {});
-    const r = await fetch(API_BASE + path, opts);
     if (!r.ok) {
       let detalhe;
       try { const j = await r.json(); detalhe = j.error || JSON.stringify(j); }
