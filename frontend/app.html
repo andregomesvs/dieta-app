@@ -520,7 +520,7 @@
   $("btnLogout").onclick = () => signOut(auth);
 
   // Selo de versão: HTML espera "v2026-07-31-b"; o /health diz o que o servidor tem.
-  const HTML_VERSION = "2026-07-31-e";
+  const HTML_VERSION = "2026-07-31-f";
   (async () => {
     const el = $("appVersion");
     if (el) el.textContent = "html " + HTML_VERSION;
@@ -1252,11 +1252,11 @@
         </div>
         <div style="margin-top:8px; display:flex; gap:6px; flex-wrap:wrap;">
           ${st
-            ? `<button class="chip-sm act-corrigir" data-i="${i}">Corrigir</button>
-               <button class="chip-sm danger act-desfazer" data-i="${i}">Desfazer</button>`
-            : `<button class="chip-sm act-ok" data-i="${i}">✅ Cumpri</button>
-               <button class="chip-sm act-troquei" data-i="${i}">🔄 Troquei</button>
-               <button class="chip-sm act-pulei" data-i="${i}">⏭️ Pulei</button>`}
+            ? `<button type="button" class="chip-sm act-corrigir" data-i="${i}">Corrigir</button>
+               <button type="button" class="chip-sm danger act-desfazer" data-i="${i}">Desfazer</button>`
+            : `<button type="button" class="chip-sm act-ok" data-i="${i}">✅ Cumpri</button>
+               <button type="button" class="chip-sm act-troquei" data-i="${i}">🔄 Troquei</button>
+               <button type="button" class="chip-sm act-pulei" data-i="${i}">⏭️ Pulei</button>`}
         </div>
         <div class="hidden" id="hojesub-${i}"></div>
       </div>`;
@@ -1270,13 +1270,33 @@
     try { consumoHoje = await api("/api/consumo/today"); } catch (_) {}
     renderHoje();
   }
-  async function registrarConsumo(idx, status, itens, kcal) {
-    const body = { idx, status };
+  function aplicarConsumoSalvo(idx, status, itens, kcal, result) {
+    const refeicoes = Object.assign({}, consumoHoje.refeicoes || {});
+    refeicoes[String(idx)] = result.entry || {
+      status,
+      itens: itens || "",
+      kcal: Number(kcal) || 0,
+    };
+    consumoHoje = Object.assign({}, consumoHoje, {
+      refeicoes,
+      total_kcal: Number(result.total_kcal) || 0,
+    });
+    if (result.alvo_kcal != null) consumoHoje.alvo_kcal = result.alvo_kcal;
+  }
+  async function registrarConsumo(idx, status, itens, kcal, signal) {
+    const body = { idx, status, diet_id: (diets[0] && diets[0].id) || null };
     if (itens != null) body.itens = itens;
     if (kcal != null) body.kcal = kcal;
-    await api("/api/consumo/registrar", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-    hojeEditing = false;  // só libera o re-render DEPOIS que gravou (não durante)
-    await reloadHoje();
+    const result = await api("/api/consumo/registrar", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal,
+    });
+    aplicarConsumoSalvo(idx, status, itens, kcal, result);
+    hojeEditing = false;
+    renderHoje();  // o POST já devolve o estado autoritativo; não depende de outro GET
+    return result;
   }
   function attachHojeHandlers() {
     document.querySelectorAll(".act-ok").forEach((b) => b.onclick = () => registrarConsumo(+b.dataset.i, "cumpriu"));
@@ -1294,15 +1314,15 @@
     box.classList.remove("hidden");
     box.innerHTML = `<div style="margin-top:8px; padding:10px 12px; background:#fff; border:1px solid var(--line); border-radius:10px;">
       ${corrigir ? `<div style="display:flex; gap:6px; margin-bottom:8px;">
-        <button class="chip-sm reOk">✅ Cumpri</button><button class="chip-sm rePulei">⏭️ Pulei</button></div>
+        <button type="button" class="chip-sm reOk">✅ Cumpri</button><button type="button" class="chip-sm rePulei">⏭️ Pulei</button></div>
         <div style="font-size:11.5px; color:var(--muted3); margin-bottom:6px;">ou registre o que comeu:</div>` : ""}
       <input class="field trTxt" placeholder="o que você comeu" style="height:42px;" />
       <div style="display:flex; gap:6px; margin-top:6px; flex-wrap:wrap;">
         <div class="field-unit" style="width:110px;"><input class="field num trKcal" type="number" placeholder="kcal" style="height:42px; padding-right:42px;" /><span class="u">kcal</span></div>
-        <button class="btn btn-ghost trEstimar" style="height:42px;">Estimar</button>
-        <button class="btn btn-primary trSalvar" style="height:42px; flex:1; justify-content:center;">Salvar</button>
+        <button type="button" class="btn btn-ghost trEstimar" style="height:42px;">Estimar</button>
+        <button type="button" class="btn btn-primary trSalvar" style="height:42px; flex:1; justify-content:center;">Salvar</button>
       </div>
-      <button class="chip-sm trCancelar" style="margin-top:8px;">Cancelar</button>
+      <button type="button" class="chip-sm trCancelar" style="margin-top:8px;">Cancelar</button>
       <div class="msg trMsg"></div></div>`;
     const q = (s) => box.querySelector(s);
     q(".trCancelar").onclick = () => { hojeEditing = false; renderHoje(); };
@@ -1344,29 +1364,34 @@
       const bSalvar = q(".trSalvar"), msg = q(".trMsg");
       const txt = q(".trTxt").value.trim();
       const kcal = q(".trKcal").value.trim();
+      if (!txt) { setMsg(msg, "Informe o que você comeu.", "err"); return; }
       if (!kcal) { setMsg(msg, "Informe as calorias (ou toque em Estimar).", "err"); return; }
+      const kcalNumero = Number(kcal);
+      if (!Number.isFinite(kcalNumero) || kcalNumero < 0) { setMsg(msg, "Informe um valor válido de calorias.", "err"); return; }
       bSalvar.disabled = true;
+      bSalvar.textContent = "Salvando...";
       loading(msg, "Salvando...");
-      // timeout de 8s: o Salvar nunca fica preso; se falhar, mostra o motivo
+      // Limite de UX. O caminho do backend foi reduzido para uma leitura da
+      // dieta, uma leitura do consumo e uma gravação.
       const ctrl = new AbortController();
       let timer;
       const limite = new Promise((_, rej) => {
-        timer = setTimeout(() => { ctrl.abort(); rej(new Error("o servidor não respondeu em 8s")); }, 8000);
+        timer = setTimeout(() => { ctrl.abort(); rej(new Error("o servidor não respondeu em 15s")); }, 15000);
       });
       try {
-        const body = JSON.stringify({ idx: i, status: "substituiu", itens: txt, kcal: Number(kcal) });
         await Promise.race([
-          api("/api/consumo/registrar", { method: "POST", headers: { "Content-Type": "application/json" }, body, signal: ctrl.signal }),
+          registrarConsumo(i, "substituiu", txt, kcalNumero, ctrl.signal),
           limite,
         ]);
-        clearTimeout(timer);
-        hojeEditing = false;   // libera o re-render só depois de gravar
-        await reloadHoje();    // fecha o formulário e mostra a refeição atualizada
       } catch (e) {
-        clearTimeout(timer);
         hojeEditing = true;
-        bSalvar.disabled = false;
-        setMsg(msg, "Não salvou: " + e.message, "err");
+        if (box.isConnected) setMsg(msg, "Não salvou: " + e.message, "err");
+      } finally {
+        clearTimeout(timer);
+        if (bSalvar.isConnected) {
+          bSalvar.disabled = false;
+          bSalvar.textContent = "Salvar";
+        }
       }
     };
   }
