@@ -24,6 +24,7 @@
         <span class="email" id="userEmail"></span>
         <span class="avatar" id="userAvatar"></span>
       </div>
+      <button id="btnDiario" class="btn btn-ghost">Diário alimentar</button>
       <button id="btnTreino" class="btn btn-ghost">Treino</button>
       <button id="btnBiblioteca" class="btn btn-ghost hidden">Biblioteca</button>
       <button id="btnAdmin" class="btn btn-ghost hidden">Admin</button>
@@ -80,18 +81,6 @@
     </div>
   </div>
 
-  <!-- Hoje: consumo x alvo -->
-  <div class="card" id="hojeCard" style="margin-top:14px;">
-    <div style="display:flex; align-items:center; justify-content:space-between; gap:10px;">
-      <div class="card-label green">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg>
-        <span>Hoje</span>
-      </div>
-      <span id="hojeAderencia" class="badge"></span>
-    </div>
-    <div id="hojeBody" style="margin-top:14px;"></div>
-  </div>
-
   <!-- Análise dos exames -->
   <div class="card" style="margin-top:14px; display:flex; flex-wrap:wrap; align-items:center; gap:16px; justify-content:space-between;">
     <div style="display:flex; align-items:flex-start; gap:13px; min-width:0;">
@@ -141,6 +130,27 @@
       <div id="historyBody" style="margin-top:16px; display:grid; gap:8px;"></div>
     </div>
   </div>
+</section>
+
+<!-- ===================== DIÁRIO ALIMENTAR ===================== -->
+<section id="view-diario" class="wrap hidden">
+  <div style="display:flex; align-items:center; gap:10px;">
+    <button id="btnBackDiario" class="btn btn-ghost" style="padding:0 13px 0 10px;">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:-2px; margin-right:4px;"><path d="M15 6l-6 6 6 6"></path></svg>
+      Voltar
+    </button>
+    <div style="flex:1;"></div>
+    <button id="btnAtualizarDiario" class="btn btn-ghost">Atualizar</button>
+  </div>
+  <div style="margin-top:22px; display:flex; flex-wrap:wrap; justify-content:space-between; align-items:flex-end; gap:12px;">
+    <div>
+      <div class="serif" style="font-size:34px; line-height:1.1;">Diário alimentar</div>
+      <div style="margin-top:6px; font-size:15px; color:var(--muted);">Registre como foi cada refeição do plano de hoje.</div>
+    </div>
+    <span id="diarioData" class="badge"></span>
+  </div>
+  <div id="diarioMsg" class="msg"></div>
+  <div id="diarioBody" style="margin-top:14px;"></div>
 </section>
 
 <!-- ===================== FORM (wizard) ===================== -->
@@ -520,7 +530,7 @@
   $("btnLogout").onclick = () => signOut(auth);
 
   // Selo de versão: HTML espera "v2026-07-31-b"; o /health diz o que o servidor tem.
-  const HTML_VERSION = "2026-07-31-g";
+  const HTML_VERSION = "2026-07-31-h";
   (async () => {
     const el = $("appVersion");
     if (el) el.textContent = "html " + HTML_VERSION;
@@ -532,15 +542,16 @@
 
   // recarrega os dados ao voltar para a aba (ex.: depois de responder no Telegram)
   let lastSync = 0;
-  let hojeEditing = false;  // trava: não re-renderizar o card Hoje durante edição
+  let diarioEditing = false;
   async function syncIfStale() {
     if (!auth.currentUser || document.visibilityState !== "visible") return;
-    if (hojeEditing) return;
+    if (diarioEditing) return;
     const now = Date.now();
     if (now - lastSync < 4000) return;
     lastSync = now;
     try { await loadAll(); } catch (_) {}
     if (!$("view-home").classList.contains("hidden")) renderHome();
+    if (!$("view-diario").classList.contains("hidden")) renderDiario();
   }
   document.addEventListener("visibilitychange", syncIfStale);
   window.addEventListener("focus", syncIfStale);
@@ -584,11 +595,14 @@
 
   // ---------- navegação ----------
   function showView(name) {
-    ["home","form","dieta","analise","medicao","meta","admin","biblioteca","treino"].forEach((v) => $("view-" + v).classList.toggle("hidden", v !== name));
+    ["home","diario","form","dieta","analise","medicao","meta","admin","biblioteca","treino"].forEach((v) => $("view-" + v).classList.toggle("hidden", v !== name));
     if (name === "home") renderHome();
     window.scrollTo(0, 0);
   }
   $("btnNewDiet").onclick = () => startWizard();
+  $("btnDiario").onclick = () => openDiario();
+  $("btnBackDiario").onclick = () => { diarioEditing = false; showView("home"); };
+  $("btnAtualizarDiario").onclick = () => openDiario();
   $("btnBack").onclick = () => showView("home");
   $("btnBackDiet").onclick = () => showView("home");
   $("btnBackAnalise").onclick = () => showView("home");
@@ -1211,72 +1225,91 @@
     renderMeta();
     renderComp();
     renderPlano();
-    renderHoje();
     renderChart();
     renderUltima();
     renderHistorico();
     renderAnaliseTeaser();
   }
 
-  function renderHoje() {
+  async function openDiario() {
+    diarioEditing = false;
+    showView("diario");
+    $("diarioData").textContent = new Date().toLocaleDateString("pt-BR", {
+      weekday: "long", day: "2-digit", month: "long",
+    });
+    loading($("diarioMsg"), "Carregando diário...");
+    try {
+      consumoHoje = await api("/api/consumo/today");
+      setMsg($("diarioMsg"), "", "");
+      renderDiario();
+    } catch (e) {
+      setMsg($("diarioMsg"), "Não foi possível carregar o diário: " + e.message, "err");
+      $("diarioBody").innerHTML = "";
+    }
+  }
+
+  function renderDiario() {
     const refsMap = consumoHoje.refeicoes || {};
     const dieta = (diets[0] && diets[0].dieta) || {};
     const planned = dieta.refeicoes || [];
     const alvo = consumoHoje.alvo_kcal || dieta.calorias_alvo_dia || null;
-    const total = consumoHoje.total_kcal || 0;
+    const total = Number(consumoHoje.total_kcal) || 0;
 
     if (!planned.length) {
-      $("hojeAderencia").textContent = "";
-      $("hojeBody").innerHTML = `<div class="empty">Gere uma dieta para acompanhar e registrar as refeições de hoje aqui.</div>`;
+      $("diarioBody").innerHTML = `<div class="card"><div class="empty">Gere uma dieta para começar o seu diário alimentar.</div></div>`;
       return;
     }
-    const cumpridas = planned.filter((r, i) => (refsMap[i] || {}).status === "cumpriu").length;
-    $("hojeAderencia").textContent = `${cumpridas}/${planned.length} cumpridas`;
 
-    let html = "";
+    const registradas = planned.filter((_, i) => !!refsMap[i]).length;
+    const cumpridas = planned.filter((_, i) => (refsMap[i] || {}).status === "cumpriu").length;
+    let html = `<div class="card">
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
+        <div><div class="card-label green">Progresso de hoje</div>
+          <div style="margin-top:8px;"><span class="kpi" style="font-size:30px;">${total}</span>
+          <span style="font-size:13px; color:var(--muted2);"> kcal${alvo ? " de " + alvo : ""}</span></div></div>
+        <span class="badge">${registradas}/${planned.length} registradas · ${cumpridas} cumpridas</span>
+      </div>`;
     if (alvo) {
       const pct = Math.min(100, (total / alvo) * 100);
       const acima = total > alvo;
-      html += `<div style="display:flex; align-items:baseline; gap:7px;">
-        <span class="kpi" style="font-size:28px;">${total}</span>
-        <span style="font-size:13px; color:var(--muted2);">kcal · alvo ${alvo}</span></div>
-        <div class="track" style="margin-top:12px;"><div class="fill" style="width:${pct.toFixed(0)}%; ${acima ? "background:var(--danger);" : ""}"></div></div>
+      html += `<div class="track" style="margin-top:14px;"><div class="fill" style="width:${pct.toFixed(0)}%; ${acima ? "background:var(--danger);" : ""}"></div></div>
         <div style="margin-top:6px; font-size:12px; color:${acima ? "var(--danger)" : "var(--muted2)"};">${acima ? "Acima do alvo em " + (total - alvo) + " kcal" : "Faltam " + Math.max(0, alvo - total) + " kcal"}</div>`;
     }
-    const stLabel = { cumpriu: "Cumprida", substituiu: "Cumpriu parcialmente", pulou: "Pulada" };
+    html += `</div><div style="margin-top:12px; display:grid; gap:10px;">`;
+
+    const stLabel = { cumpriu: "Cumprida", substituiu: "Substituída", pulou: "Pulada" };
     const stColor = { cumpriu: "var(--green)", substituiu: "#B07A1E", pulou: "var(--muted2)" };
-    html += `<div style="margin-top:14px; display:grid; gap:8px;">`;
     planned.forEach((r, i) => {
       const e = refsMap[i];
       const st = e && e.status;
-      html += `<div class="hoje-meal" data-i="${i}">
-        <div style="display:flex; align-items:center; gap:10px;">
-          <span class="mono" style="width:46px; color:var(--green); font-size:12.5px;">${esc(r.horario || "")}</span>
+      html += `<div class="card hoje-meal" data-i="${i}" style="padding:18px 20px;">
+        <div style="display:flex; align-items:center; gap:12px;">
+          <span class="mono" style="width:48px; color:var(--green); font-size:12.5px;">${esc(r.horario || "")}</span>
           <div style="flex:1; min-width:0;">
-            <div style="font-size:14px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${esc(r.nome || "")}</div>
-            <div style="font-size:12px; color:${stColor[st] || "var(--muted3)"};">${stLabel[st] || "Pendente"}${st === "substituiu" && e.itens ? " — " + esc(e.itens) : ""}</div>
+            <div style="font-size:15px; font-weight:600;">${esc(r.nome || "Refeição")}</div>
+            <div style="font-size:12px; margin-top:2px; color:${stColor[st] || "var(--muted3)"};">${stLabel[st] || "Aguardando registro"}${st === "substituiu" && e.itens ? " — " + esc(e.itens) : ""}</div>
           </div>
           <span class="mono" style="color:var(--muted3); font-size:12px;">${e ? (e.kcal || 0) : (r.kcal_total || 0)} kcal</span>
         </div>
-        <div style="margin-top:8px; display:flex; gap:6px; flex-wrap:wrap;">
+        <div style="margin-top:12px; display:flex; gap:7px; flex-wrap:wrap;">
           ${st
-            ? `<button type="button" class="chip-sm act-corrigir" data-i="${i}">Corrigir</button>
-               <button type="button" class="chip-sm danger act-desfazer" data-i="${i}">Desfazer</button>`
-            : `<button type="button" class="chip-sm act-ok" data-i="${i}">✅ Cumpri</button>
-               <button type="button" class="chip-sm act-troquei" data-i="${i}">🔄 Troquei</button>
+            ? `<button type="button" class="chip-sm act-corrigir" data-i="${i}">Alterar registro</button>
+               <button type="button" class="chip-sm danger act-desfazer" data-i="${i}">Remover</button>`
+            : `<button type="button" class="chip-sm act-ok" data-i="${i}">✅ Segui o plano</button>
+               <button type="button" class="chip-sm act-troquei" data-i="${i}">🔄 Comi outra coisa</button>
                <button type="button" class="chip-sm act-pulei" data-i="${i}">⏭️ Pulei</button>`}
         </div>
-        <div class="hidden" id="hojesub-${i}"></div>
+        <div class="hidden" id="diariosub-${i}"></div>
       </div>`;
     });
     html += `</div>`;
-    $("hojeBody").innerHTML = html;
-    attachHojeHandlers();
+    $("diarioBody").innerHTML = html;
+    attachDiarioHandlers();
   }
 
-  async function reloadHoje() {
-    try { consumoHoje = await api("/api/consumo/today"); } catch (_) {}
-    renderHoje();
+  async function reloadDiario() {
+    consumoHoje = await api("/api/consumo/today");
+    renderDiario();
   }
   function aplicarConsumoSalvo(idx, status, itens, kcal, result) {
     const refeicoes = Object.assign({}, consumoHoje.refeicoes || {});
@@ -1302,23 +1335,43 @@
       signal,
     });
     aplicarConsumoSalvo(idx, status, itens, kcal, result);
-    hojeEditing = false;
-    renderHoje();  // o POST já devolve o estado autoritativo; não depende de outro GET
+    diarioEditing = false;
+    renderDiario();
     return result;
   }
-  function attachHojeHandlers() {
-    document.querySelectorAll(".act-ok").forEach((b) => b.onclick = () => registrarConsumo(+b.dataset.i, "cumpriu"));
-    document.querySelectorAll(".act-pulei").forEach((b) => b.onclick = () => registrarConsumo(+b.dataset.i, "pulou"));
-    document.querySelectorAll(".act-desfazer").forEach((b) => b.onclick = async () => {
-      await api("/api/consumo/remover", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ idx: +b.dataset.i }) });
-      await reloadHoje();
+  async function executarRegistro(button, idx, status) {
+    button.disabled = true;
+    loading($("diarioMsg"), "Salvando registro...");
+    try {
+      await registrarConsumo(idx, status);
+      setMsg($("diarioMsg"), "Registro salvo com sucesso.", "ok");
+    } catch (e) {
+      setMsg($("diarioMsg"), "Não foi possível salvar: " + e.message, "err");
+      if (button.isConnected) button.disabled = false;
+    }
+  }
+  function attachDiarioHandlers() {
+    const body = $("diarioBody");
+    body.querySelectorAll(".act-ok").forEach((b) => b.onclick = () => executarRegistro(b, +b.dataset.i, "cumpriu"));
+    body.querySelectorAll(".act-pulei").forEach((b) => b.onclick = () => executarRegistro(b, +b.dataset.i, "pulou"));
+    body.querySelectorAll(".act-desfazer").forEach((b) => b.onclick = async () => {
+      b.disabled = true;
+      loading($("diarioMsg"), "Removendo registro...");
+      try {
+        await api("/api/consumo/remover", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ idx: +b.dataset.i }) });
+        await reloadDiario();
+        setMsg($("diarioMsg"), "Registro removido.", "ok");
+      } catch (e) {
+        setMsg($("diarioMsg"), "Não foi possível remover: " + e.message, "err");
+        if (b.isConnected) b.disabled = false;
+      }
     });
-    document.querySelectorAll(".act-corrigir").forEach((b) => b.onclick = () => openTroca(+b.dataset.i, true));
-    document.querySelectorAll(".act-troquei").forEach((b) => b.onclick = () => openTroca(+b.dataset.i, false));
+    body.querySelectorAll(".act-corrigir").forEach((b) => b.onclick = () => openTroca(+b.dataset.i, true));
+    body.querySelectorAll(".act-troquei").forEach((b) => b.onclick = () => openTroca(+b.dataset.i, false));
   }
   function openTroca(i, corrigir) {
-    hojeEditing = true;  // impede o card de re-renderizar enquanto edita
-    const box = $("hojesub-" + i);
+    diarioEditing = true;
+    const box = $("diariosub-" + i);
     box.classList.remove("hidden");
     box.innerHTML = `<div style="margin-top:8px; padding:10px 12px; background:#fff; border:1px solid var(--line); border-radius:10px;">
       ${corrigir ? `<div style="display:flex; gap:6px; margin-bottom:8px;">
@@ -1333,10 +1386,15 @@
       <button type="button" class="chip-sm trCancelar" style="margin-top:8px;">Cancelar</button>
       <div class="msg trMsg"></div></div>`;
     const q = (s) => box.querySelector(s);
-    q(".trCancelar").onclick = () => { hojeEditing = false; renderHoje(); };
+    const anterior = (consumoHoje.refeicoes || {})[i] || {};
+    if (corrigir && anterior.status === "substituiu") {
+      q(".trTxt").value = anterior.itens || "";
+      q(".trKcal").value = anterior.kcal || "";
+    }
+    q(".trCancelar").onclick = () => { diarioEditing = false; renderDiario(); };
     if (corrigir) {
-      q(".reOk").onclick = () => registrarConsumo(i, "cumpriu");
-      q(".rePulei").onclick = () => registrarConsumo(i, "pulou");
+      q(".reOk").onclick = (ev) => executarRegistro(ev.currentTarget, i, "cumpriu");
+      q(".rePulei").onclick = (ev) => executarRegistro(ev.currentTarget, i, "pulou");
     }
     q(".trEstimar").onclick = async () => {
       const msg = q(".trMsg"), bEst = q(".trEstimar");
@@ -1391,8 +1449,9 @@
           registrarConsumo(i, "substituiu", txt, kcalNumero, ctrl.signal),
           limite,
         ]);
+        setMsg($("diarioMsg"), "Substituição salva com sucesso.", "ok");
       } catch (e) {
-        hojeEditing = true;
+        diarioEditing = true;
         if (box.isConnected) setMsg(msg, "Não salvou: " + e.message, "err");
       } finally {
         clearTimeout(timer);
