@@ -1,17 +1,15 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Cada usuário só acessa seus próprios dados.
-    // O backend usa o Admin SDK e ignora estas regras; elas protegem
-    // acessos diretos pelo SDK cliente.
-    match /usuarios/{uid} {
+    // Única exceção para o SDK do navegador: cada usuário autenticado pode
+    // acessar somente os próprios documentos do Diário alimentar.
+    match /usuarios/{uid}/consumo/{dia} {
       allow read, write: if request.auth != null && request.auth.uid == uid;
-      match /dietas/{dietaId} {
-        allow read, write: if request.auth != null && request.auth.uid == uid;
-      }
-      match /consumo/{dia} {
-        allow read, write: if request.auth != null && request.auth.uid == uid;
-      }
+    }
+
+    // Todo o restante continua acessível apenas pelo backend (Admin SDK).
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }
