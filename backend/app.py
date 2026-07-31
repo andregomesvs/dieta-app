@@ -990,7 +990,8 @@ def estimate_calories(text):
               '{"itens":[{"alimento":string,"kcal":number}],"kcal_total":number}. '
               f"Comida: {text}")
     try:
-        resp = gemini().generate_content(prompt)
+        # timeout curto: se o Gemini demorar, falha rápido em vez de prender o worker
+        resp = gemini().generate_content(prompt, request_options={"timeout": 30})
         parsed = _safe_json((resp.text or "").strip())
         if parsed.get("_parse_error"):
             return {"ok": False, "erro": "resposta não estruturada"}
