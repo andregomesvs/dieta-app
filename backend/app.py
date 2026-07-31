@@ -1475,6 +1475,22 @@ def treino_meu():
     return jsonify(p)
 
 
+@app.route("/api/treino/lista", methods=["GET"])
+@require_auth
+def treino_lista():
+    """Todos os planos do usuário (para 'treinos anteriores')."""
+    docs = (db().collection("usuarios").document(g.uid).collection("treinos")
+            .order_by("criado_em", direction=firestore.Query.DESCENDING).limit(50).stream())
+    out = []
+    for d in docs:
+        t = d.to_dict() or {}
+        out.append({"id": d.id, "nome": t.get("nome"), "objetivo": t.get("objetivo"),
+                    "nivel": t.get("nivel"), "data_inicio": t.get("data_inicio"),
+                    "data_fim": t.get("data_fim"), "criado_em": t.get("criado_em"),
+                    "sessoes": t.get("sessoes")})
+    return jsonify(out)
+
+
 @app.route("/api/treino/today", methods=["GET"])
 @require_auth
 def treino_today():

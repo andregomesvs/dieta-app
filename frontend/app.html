@@ -617,6 +617,7 @@
   const WD_KEYS = ["seg","ter","qua","qui","sex","sab","dom"];
   const WD_LABEL = ["Seg","Ter","Qua","Qui","Sex","Sáb","Dom"];
   let treinoMeu = null, treinoSemana = { dias: [], checkins: {} }, treinoView = "cal", detIdx = 0, detData = null;
+  let treinoLista = [], detAnterior = null;
   let genModal = new Set(), genLocal = new Set();
 
   $("btnTreino").onclick = () => openTreinoUser();
@@ -645,6 +646,7 @@
     try {
       treinoMeu = await api("/api/treino/meu");
       treinoSemana = await api("/api/treino/semana");
+      treinoLista = await api("/api/treino/lista");
       setMsg($("treinoMsg"), "", "");
       renderTreino();
     } catch (e) { setMsg($("treinoMsg"), e.message, "err"); }
@@ -658,6 +660,7 @@
     if (!has) { $("treinoBody").innerHTML = treinoGenFormHtml(); wireTreinoGen(); return; }
     if (treinoView === "sessao") renderTreinoSession();
     else if (treinoView === "atividade") renderAtividadeLivre();
+    else if (treinoView === "anterior") renderTreinoAnterior();
     else renderTreinoCalendar();
   }
 
@@ -666,7 +669,7 @@
     const checks = treinoSemana.checkins || {};
     const hoje = treinoSemana.hoje || new Date().toISOString().slice(0, 10);
     let agendadas = 0, feitas = 0, kcalSemana = 0;
-    dias.forEach((d) => { if (sessaoDoDow(d.dow)) { agendadas++; if ((checks[d.data] || {}).finalizado) feitas++; } });
+    dias.forEach((d) => { if (sessaoDoDow(d.dow)) { agendadas++; const c = checks[d.data] || {}; if (c.finalizado && c.plano_id === treinoMeu.id) feitas++; } });
     Object.values(checks).forEach((c) => { kcalSemana += (c.kcal_sessao || 0) + (c.kcal_atividade || 0); });
     const pct = agendadas ? Math.round((feitas / agendadas) * 100) : 0;
     let renovar = "";
@@ -688,9 +691,9 @@
       <div style="margin-top:14px; display:grid; grid-template-columns:repeat(7,1fr); gap:6px;">`;
     dias.forEach((d) => {
       const sd = sessaoDoDow(d.dow);
-      const done = (checks[d.data] || {}).finalizado;
-      const passou = d.data < hoje, ehHoje = d.data === hoje;
       const ck = checks[d.data] || {};
+      const done = ck.finalizado && ck.plano_id === treinoMeu.id;
+      const passou = d.data < hoje, ehHoje = d.data === hoje;
       let bg = "var(--soft)", bd = "var(--line)", cor = "var(--muted3)", txt = "—";
       if (sd) {
         if (done) { bg = "rgba(20,115,90,.12)"; bd = "rgba(20,115,90,.4)"; cor = "var(--green)"; txt = "✓ feito"; }
@@ -708,7 +711,23 @@
     html += `</div>
       <div style="font-size:11.5px; color:var(--muted3); margin-top:8px;">Toque num dia. Dia com treino: registre a sessão. Dia livre: registre outra atividade (corrida, luta…). Verde = feito · vermelho = não feito · azul = atividade.</div>
       <div class="disclaimer" style="margin-top:12px;">${esc(treinoMeu.aviso || "Plano sugerido por IA — não substitui um profissional.")}</div></div>`;
+
+    const anteriores = (treinoLista || []).filter((t) => t.id !== treinoMeu.id);
+    if (anteriores.length) {
+      html += `<div class="card" style="margin-top:12px;"><div class="card-title" style="font-size:18px;">Treinos anteriores</div>
+        <div style="margin-top:10px; display:grid; gap:8px;">` +
+        anteriores.map((t) => `<div class="hist-card tr-ant" data-id="${t.id}">
+          <div style="min-width:0; flex:1;">
+            <div class="t">${esc(t.nome || "Treino")}</div>
+            <div class="d" style="font-family:'Plus Jakarta Sans';">${esc(t.objetivo || "")}${t.data_inicio ? " · " + fmtBR(t.data_inicio) + "–" + fmtBR(t.data_fim) : (t.criado_em ? " · " + fmtBR((t.criado_em || "").slice(0, 10)) : "")}</div>
+          </div>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#B4B9B3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"></path></svg>
+        </div>`).join("") + `</div></div>`;
+    }
     $("treinoBody").innerHTML = html;
+    document.querySelectorAll(".tr-ant").forEach((el) => el.onclick = () => {
+      detAnterior = treinoLista.find((t) => t.id === el.dataset.id); treinoView = "anterior"; renderTreino(); window.scrollTo(0, 0);
+    });
     document.querySelectorAll(".tr-day").forEach((el) => {
       const sd = sessaoDoDow(+el.dataset.dow);
       el.onclick = () => {
@@ -790,6 +809,27 @@
     } catch (e) { setMsg($("treinoMsg"), e.message, "err"); }
   }
   function renovarTreino() { gerarTreino(treinoMeu.prefs || {}); }
+
+  function renderTreinoAnterior() {
+    const p = detAnterior || {};
+    let html = `<div class="card">
+      <div class="row" style="justify-content:space-between;">
+        <div style="min-width:0;"><div class="serif" style="font-size:22px;">${esc(p.nome || "Treino")}</div>
+        <div style="font-size:12px; color:var(--muted3);">${esc(p.objetivo || "")}${p.nivel ? " · " + esc(p.nivel) : ""}${p.data_inicio ? " · " + fmtBR(p.data_inicio) + "–" + fmtBR(p.data_fim) : ""}</div></div>
+        <button id="btnVoltaCal3" class="btn btn-ghost" style="height:36px;">← Voltar</button>
+      </div>
+      <div style="font-size:12px; color:var(--muted3); margin-top:6px;">Somente leitura (treino anterior).</div>`;
+    (p.sessoes || []).forEach((s) => {
+      html += `<div class="diet-meal" style="margin-top:12px;"><div class="mh"><span class="h">${esc(s.foco || "Sessão")}</span><span class="t">${esc(s.dia_semana || "")}${s.kcal_estimado ? " · ~" + s.kcal_estimado + " kcal" : ""}</span></div><ul>`;
+      (s.exercicios || []).forEach((ex) => {
+        html += `<li>${esc(ex.nome || "")} <span class="it-sub">— ${ex.series ? ex.series + "x" : ""}${esc(ex.reps || "")}${ex.carga ? " · " + esc(ex.carga) : ""}</span></li>`;
+      });
+      html += `</ul></div>`;
+    });
+    html += `</div>`;
+    $("treinoBody").innerHTML = html;
+    $("btnVoltaCal3").onclick = () => { treinoView = "cal"; renderTreino(); };
+  }
 
   function renderAtividadeLivre() {
     const ck = (treinoSemana.checkins || {})[detData] || {};
@@ -876,6 +916,7 @@
       const res = await api("/api/treino/gerar", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(prefs) });
       treinoMeu = res.plano;
       await reloadSemana();
+      try { treinoLista = await api("/api/treino/lista"); } catch (_) {}
       treinoView = "cal";
       setMsg($("treinoMsg"), "Treino gerado!", "ok");
       renderTreino();
