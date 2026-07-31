@@ -497,7 +497,7 @@
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
   import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-  import { getFirestore, doc, getDoc, runTransaction }
+  import { getFirestore, doc, getDoc, setDoc }
     from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
   import { firebaseConfig, API_BASE } from "/static/js/firebase-config.js";
 
@@ -533,7 +533,7 @@
   $("btnLogout").onclick = () => signOut(auth);
 
   // Selo de versão: HTML espera "v2026-07-31-b"; o /health diz o que o servidor tem.
-  const HTML_VERSION = "2026-07-31-i";
+  const HTML_VERSION = "2026-07-31-j";
   (async () => {
     const el = $("appVersion");
     if (el) el.textContent = "html " + HTML_VERSION;
@@ -1251,6 +1251,30 @@
     return doc(clientDb, "usuarios", auth.currentUser.uid, "consumo", diaLocal());
   }
 
+  function chaveConsumoPendente() {
+    if (!auth.currentUser) return null;
+    return `diario_pendente_${auth.currentUser.uid}_${diaLocal()}`;
+  }
+
+  function lerConsumoPendente() {
+    const chave = chaveConsumoPendente();
+    if (!chave) return null;
+    try { return JSON.parse(localStorage.getItem(chave) || "null"); }
+    catch (_) { return null; }
+  }
+
+  function guardarConsumoPendente(data) {
+    const chave = chaveConsumoPendente();
+    if (chave) localStorage.setItem(chave, JSON.stringify(data));
+  }
+
+  function limparConsumoPendente() {
+    const chave = chaveConsumoPendente();
+    if (chave) localStorage.removeItem(chave);
+  }
+
+  let filaSyncDiario = Promise.resolve();
+
   function erroFirebaseDiario(e) {
     if (e && e.code === "permission-denied") {
       return new Error("O Firebase bloqueou o Diário. Publique as novas regras do Firestore e tente novamente.");
@@ -1270,15 +1294,52 @@
   }
 
   async function carregarConsumoDireto() {
+    const pendente = lerConsumoPendente();
     try {
       const snap = await limitarTempo(getDoc(refConsumoHoje()), 10000);
-      return snap.exists() ? snap.data() : {};
+      const remoto = snap.exists() ? snap.data() : {};
+      if (pendente) {
+        void agendarSincronizacao(pendente, true);
+        return pendente;
+      }
+      return remoto;
     } catch (e) {
+      if (pendente) return pendente;
       throw erroFirebaseDiario(e);
     }
   }
 
-  async function salvarConsumoDireto(idx, status, itens, kcal) {
+  async function sincronizarConsumo(data, silencioso = false) {
+    try {
+      await limitarTempo(setDoc(refConsumoHoje(), data), 8000);
+      const atual = lerConsumoPendente();
+      if (!atual || atual.atualizado_em === data.atualizado_em) limparConsumoPendente();
+      if (!silencioso && $("diarioMsg")) {
+        setMsg($("diarioMsg"), "Registro sincronizado com o Firebase.", "ok");
+      }
+      return true;
+    } catch (e) {
+      if (!silencioso && $("diarioMsg")) {
+        setMsg($("diarioMsg"), "Registro salvo neste dispositivo. A sincronização será tentada novamente.", "err");
+      }
+      return false;
+    }
+  }
+
+  function agendarSincronizacao(data, silencioso = false) {
+    filaSyncDiario = filaSyncDiario.then(
+      () => sincronizarConsumo(data, silencioso),
+      () => sincronizarConsumo(data, silencioso),
+    );
+    return filaSyncDiario;
+  }
+
+  window.addEventListener("online", () => {
+    const pendente = lerConsumoPendente();
+    if (pendente) void agendarSincronizacao(pendente);
+  });
+
+  function salvarConsumoDireto(idx, status, itens, kcal) {
     const dieta = (diets[0] && diets[0].dieta) || {};
     const planejadas = dieta.refeicoes || [];
     if (!Number.isInteger(idx) || idx < 0 || idx >= planejadas.length) {
@@ -1298,46 +1359,33 @@
       entry = { nome: planejada.nome || "Refeição", status: "substituiu", itens: texto, kcal: Math.round(valor) };
     }
 
-    const ref = refConsumoHoje();
-    try {
-      return await limitarTempo(runTransaction(clientDb, async (transaction) => {
-        const snap = await transaction.get(ref);
-        const atual = snap.exists() ? snap.data() : {};
-        const refeicoes = Object.assign({}, atual.refeicoes || {});
-        refeicoes[String(idx)] = entry;
-        const total = Object.values(refeicoes).reduce((soma, refeicao) => soma + (Number(refeicao.kcal) || 0), 0);
-        const salvo = Object.assign({}, atual, {
-          data: diaLocal(),
-          refeicoes,
-          total_kcal: total,
-          alvo_kcal: atual.alvo_kcal || dieta.calorias_alvo_dia || null,
-          atualizado_em: new Date().toISOString(),
-        });
-        transaction.set(ref, salvo);
-        return { ok: true, idx, entry, total_kcal: total, alvo_kcal: salvo.alvo_kcal };
-      }), 10000);
-    } catch (e) {
-      throw erroFirebaseDiario(e);
-    }
+    const refeicoes = Object.assign({}, consumoHoje.refeicoes || {});
+    refeicoes[String(idx)] = entry;
+    const total = Object.values(refeicoes).reduce((soma, refeicao) => soma + (Number(refeicao.kcal) || 0), 0);
+    const salvo = Object.assign({}, consumoHoje, {
+      data: diaLocal(),
+      refeicoes,
+      total_kcal: total,
+      alvo_kcal: consumoHoje.alvo_kcal || dieta.calorias_alvo_dia || null,
+      atualizado_em: new Date().toISOString(),
+    });
+    guardarConsumoPendente(salvo);
+    consumoHoje = salvo;
+    void agendarSincronizacao(salvo);
+    return { ok: true, idx, entry, total_kcal: total, alvo_kcal: salvo.alvo_kcal };
   }
 
-  async function removerConsumoDireto(idx) {
-    const ref = refConsumoHoje();
-    try {
-      return await limitarTempo(runTransaction(clientDb, async (transaction) => {
-        const snap = await transaction.get(ref);
-        if (!snap.exists()) return {};
-        const atual = snap.data() || {};
-        const refeicoes = Object.assign({}, atual.refeicoes || {});
-        delete refeicoes[String(idx)];
-        const total = Object.values(refeicoes).reduce((soma, refeicao) => soma + (Number(refeicao.kcal) || 0), 0);
-        const salvo = Object.assign({}, atual, { refeicoes, total_kcal: total, atualizado_em: new Date().toISOString() });
-        transaction.set(ref, salvo);
-        return salvo;
-      }), 10000);
-    } catch (e) {
-      throw erroFirebaseDiario(e);
-    }
+  function removerConsumoDireto(idx) {
+    const refeicoes = Object.assign({}, consumoHoje.refeicoes || {});
+    delete refeicoes[String(idx)];
+    const total = Object.values(refeicoes).reduce((soma, refeicao) => soma + (Number(refeicao.kcal) || 0), 0);
+    const salvo = Object.assign({}, consumoHoje, {
+      refeicoes, total_kcal: total, atualizado_em: new Date().toISOString(),
+    });
+    guardarConsumoPendente(salvo);
+    consumoHoje = salvo;
+    void agendarSincronizacao(salvo);
+    return salvo;
   }
 
   async function openDiario() {
@@ -1539,24 +1587,13 @@
       bSalvar.disabled = true;
       bSalvar.textContent = "Salvando...";
       loading(msg, "Salvando...");
-      // Limite de UX. O caminho do backend foi reduzido para uma leitura da
-      // dieta, uma leitura do consumo e uma gravação.
-      const ctrl = new AbortController();
-      let timer;
-      const limite = new Promise((_, rej) => {
-        timer = setTimeout(() => { ctrl.abort(); rej(new Error("o servidor não respondeu em 15s")); }, 15000);
-      });
       try {
-        await Promise.race([
-          registrarConsumo(i, "substituiu", txt, kcalNumero, ctrl.signal),
-          limite,
-        ]);
-        setMsg($("diarioMsg"), "Substituição salva com sucesso.", "ok");
+        await registrarConsumo(i, "substituiu", txt, kcalNumero);
+        setMsg($("diarioMsg"), "Substituição salva. Sincronizando com o Firebase...", "ok");
       } catch (e) {
         diarioEditing = true;
         if (box.isConnected) setMsg(msg, "Não salvou: " + e.message, "err");
       } finally {
-        clearTimeout(timer);
         if (bSalvar.isConnected) {
           bSalvar.disabled = false;
           bSalvar.textContent = "Salvar";
