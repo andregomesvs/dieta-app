@@ -772,9 +772,10 @@
         <div style="display:flex; gap:6px; flex-wrap:wrap;">
           ${["leve","moderado","intenso"].map((f) => `<button type="button" class="chip-choice fb-chip ${f === feedbackSel ? "active" : ""}" data-f="${f}">${f}</button>`).join("")}
         </div></div>
+        <label style="display:block; margin-top:10px;"><span class="flabel">Comentário (opcional)</span><textarea id="tr_coment" class="field" rows="2" placeholder="ex.: senti dor no ombro no supino; energia boa hoje"></textarea></label>
         <button id="btnFinalizarTreino" class="btn btn-primary" style="width:100%; height:48px; justify-content:center; margin-top:12px;">Finalizar treino (${feitosCount}/${totalEx})</button>`;
-    } else if (chk.feedback) {
-      html += `<div style="margin-top:12px; font-size:13px; color:var(--muted);">Feedback: <b>${esc(chk.feedback)}</b>${chk.kcal_sessao ? " · ~" + chk.kcal_sessao + " kcal" : ""}</div>`;
+    } else if (chk.feedback || chk.comentario) {
+      html += `<div style="margin-top:12px; font-size:13px; color:var(--muted);">Feedback: <b>${esc(chk.feedback || "—")}</b>${chk.kcal_sessao ? " · ~" + chk.kcal_sessao + " kcal" : ""}${chk.comentario ? `<br>“${esc(chk.comentario)}”` : ""}</div>`;
     }
     html += `</div>`;
     $("treinoBody").innerHTML = html;
@@ -799,10 +800,11 @@
     const total = (s.exercicios || []).length;
     const base = s.kcal_estimado || 300;
     const kcal = Math.round(base * (FEEDBACK_FATOR[feedbackSel] || 1));
+    const coment = ($("tr_coment") && $("tr_coment").value.trim()) || "";
     loading($("treinoMsg"), "Finalizando...");
     try {
       await api("/api/treino/finalizar", { method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessao_idx: detIdx, plano_id: treinoMeu.id, total_exercicios: total, data: detData, feedback: feedbackSel, kcal }) });
+        body: JSON.stringify({ sessao_idx: detIdx, plano_id: treinoMeu.id, total_exercicios: total, data: detData, feedback: feedbackSel, kcal, comentario: coment }) });
       await reloadSemana();
       setMsg($("treinoMsg"), "Treino finalizado! Check-in registrado.", "ok");
       treinoView = "cal"; renderTreino();
@@ -1120,7 +1122,7 @@
           <div style="margin-top:10px; display:grid; gap:4px;">` +
           tses.slice(0, 12).map((t) => {
             const dt = (t.data || "").split("-").reverse().join("/");
-            const info = t.finalizado ? ("sessão · " + (t.feedback || "?") + (t.kcal_sessao ? " · " + t.kcal_sessao + " kcal" : ""))
+            const info = t.finalizado ? ("sessão · " + (t.feedback || "?") + (t.kcal_sessao ? " · " + t.kcal_sessao + " kcal" : "") + (t.comentario ? " · “" + esc(t.comentario) + "”" : ""))
               : (t.atividade ? ("🏃 " + esc(t.atividade) + (t.kcal_atividade ? " · " + t.kcal_atividade + " kcal" : "")) : "iniciado");
             return `<div class="meal-row" style="padding:7px 4px;"><span class="time" style="width:auto;">${esc(dt)}</span><span class="nm" style="font-weight:400;">${esc(info)}</span></div>`;
           }).join("") + `</div>`;
@@ -1615,16 +1617,22 @@
     { title: "Notificações", sub: "Receba um lembrete de cada refeição no horário, direto no navegador." },
   ];
 
-  function startWizard() {
+  async function startWizard() {
     step = 1;
+    showView("form");
+    // recarrega dados já registrados (medições/perfil) para não pedir de novo
+    try { profile = await api("/api/profile"); medicoes = await api("/api/measurements"); } catch (_) {}
     fillForm();
     selectedPrazo = profile.prazo || "mensal";
     updatePrazoChips();
     renderStep();
-    showView("form");
   }
+  const COMP_FIELDS = ["peso_kg", "percentual_gordura", "massa_magra_kg", "gordura_visceral", "cintura_cm"];
   function fillForm() {
-    PROFILE_FIELDS.forEach((f) => { $(f).value = profile[f] != null ? profile[f] : ""; });
+    PROFILE_FIELDS.forEach((f) => {
+      const v = COMP_FIELDS.includes(f) ? latestVal(f) : profile[f];
+      $(f).value = v != null ? v : "";
+    });
     EXTRA_FIELDS.forEach((f) => { $(f).value = profile[f] != null ? profile[f] : ""; });
     const meta = profile.meta || {};
     $("wiz_peso_meta").value = meta.peso_meta != null ? meta.peso_meta : "";

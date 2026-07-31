@@ -1416,13 +1416,26 @@ def treino_gerar():
     local = d.get("local") or []
     if isinstance(local, str):
         local = [local]
+    # contexto do perfil/análise para o treino considerar (paridade com a dieta)
+    salvo = db().collection("usuarios").document(g.uid).get().to_dict() or {}
+    objetivo = d.get("objetivo") or salvo.get("objetivo") or ""
+    contexto = ""
+    analise = salvo.get("analise") or {}
+    pts = [x.get("titulo") for x in (analise.get("destaques") or [])
+           if x.get("status") in ("atencao", "alerta") and x.get("titulo")]
+    if pts:
+        contexto += ("\nPontos de saúde a considerar com cautela (não são diagnóstico; "
+                     "adapte o volume/impacto e evite agravar): " + "; ".join(pts))
+    if salvo.get("idade") or salvo.get("peso_kg"):
+        contexto += f"\nContexto: idade {salvo.get('idade', '?')}, peso {salvo.get('peso_kg', '?')} kg."
     user_msg = (
-        f"Objetivo: {d.get('objetivo', '')}\n"
+        f"Objetivo: {objetivo}\n"
         f"Nível: {d.get('nivel', 'basico')}\n"
         f"Dias por semana: {d.get('dias_por_semana', 3)}\n"
         f"Modalidades já praticadas (e tempo/frequência): "
         f"{', '.join(modalidades) or 'nenhuma'}. {d.get('tempo_modalidade', '')}\n"
-        f"Onde vai treinar: {', '.join(local) or d.get('equipamento', 'academia')}\n\n"
+        f"Onde vai treinar: {', '.join(local) or d.get('equipamento', 'academia')}"
+        f"{contexto}\n\n"
         f"Exercícios aprovados disponíveis (use só estes id):\n"
         + json.dumps(catalogo, ensure_ascii=False)
     )
@@ -1551,6 +1564,7 @@ def treino_finalizar():
     data["plano_id"] = body.get("plano_id")
     data["total_exercicios"] = body.get("total_exercicios")
     data["feedback"] = body.get("feedback")  # leve | moderado | intenso
+    data["comentario"] = (body.get("comentario") or "").strip()
     try:
         data["kcal_sessao"] = int(body.get("kcal") or 0)
     except (TypeError, ValueError):
