@@ -533,7 +533,7 @@
   $("btnLogout").onclick = () => signOut(auth);
 
   // Selo de versão: HTML espera "v2026-07-31-b"; o /health diz o que o servidor tem.
-  const HTML_VERSION = "2026-07-31-j";
+  const HTML_VERSION = "2026-07-31-l";
   (async () => {
     const el = $("appVersion");
     if (el) el.textContent = "html " + HTML_VERSION;
@@ -1547,11 +1547,13 @@
       q(".rePulei").onclick = (ev) => executarRegistro(ev.currentTarget, i, "pulou");
     }
     q(".trEstimar").onclick = async () => {
-      const msg = q(".trMsg"), bEst = q(".trEstimar");
-      const txt = q(".trTxt").value.trim();
-      if (!txt) { setMsg(msg, "Escreva o que comeu primeiro.", "err"); return; }
-      bEst.disabled = true;
-      loading(msg, "Estimando...");
+      const bEst = q(".trEstimar"), trTxt = q(".trTxt");
+      const setM = (t, k) => { const el = q(".trMsg") || $("diarioMsg"); if (el) setMsg(el, t, k); };
+      const loadM = (t) => { const el = q(".trMsg") || $("diarioMsg"); if (el) loading(el, t); };
+      const txt = trTxt ? trTxt.value.trim() : "";
+      if (!txt) { setM("Escreva o que comeu primeiro.", "err"); return; }
+      if (bEst) bEst.disabled = true;
+      loadM("Estimando...");
       // timeout rígido de 5s: passou disso, o spinner PARA e o usuário digita/salva manual
       const ctrl = new AbortController();
       let timer;
@@ -1563,38 +1565,46 @@
           api("/api/estimate-kcal", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ texto: txt }), signal: ctrl.signal }),
           limite,
         ]);
+        const campoKcal = q(".trKcal");
         if (r && r.ok && r.kcal_total) {
-          q(".trKcal").value = r.kcal_total;
-          setMsg(msg, "~" + r.kcal_total + " kcal. Ajuste se quiser e clique em Salvar.", "ok");
+          if (campoKcal) campoKcal.value = r.kcal_total;
+          setM("~" + r.kcal_total + " kcal. Ajuste se quiser e clique em Salvar.", "ok");
         } else {
-          setMsg(msg, "Não consegui estimar. Digite as calorias no campo e salve.", "err");
+          setM("Não consegui estimar. Digite as calorias no campo e salve.", "err");
         }
       } catch (e) {
-        setMsg(msg, "A estimativa não respondeu em 5s. Digite as calorias no campo e clique em Salvar.", "err");
+        setM("A estimativa não respondeu em 5s. Digite as calorias no campo e clique em Salvar.", "err");
       } finally {
         clearTimeout(timer);      // evita o abort tardio depois de já ter respondido
-        bEst.disabled = false;    // botão sempre volta ao normal
+        if (bEst) bEst.disabled = false;    // botão sempre volta ao normal
       }
     };
     q(".trSalvar").onclick = async () => {
-      const bSalvar = q(".trSalvar"), msg = q(".trMsg");
-      const txt = q(".trTxt").value.trim();
-      const kcal = q(".trKcal").value.trim();
-      if (!txt) { setMsg(msg, "Informe o que você comeu.", "err"); return; }
-      if (!kcal) { setMsg(msg, "Informe as calorias (ou toque em Estimar).", "err"); return; }
+      const bSalvar = q(".trSalvar");
+      // mensagem à prova de null: usa o .trMsg do formulário ou, se sumiu, o diarioMsg
+      const setM = (t, k) => { const el = q(".trMsg") || $("diarioMsg"); if (el) setMsg(el, t, k); };
+      const trTxt = q(".trTxt"), trKcal = q(".trKcal");
+      const txt = trTxt ? trTxt.value.trim() : "";
+      const kcal = trKcal ? trKcal.value.trim() : "";
+      if (!txt) { setM("Informe o que você comeu.", "err"); return; }
+      if (!kcal) { setM("Informe as calorias (ou toque em Estimar).", "err"); return; }
       const kcalNumero = Number(kcal);
-      if (!Number.isFinite(kcalNumero) || kcalNumero < 0) { setMsg(msg, "Informe um valor válido de calorias.", "err"); return; }
-      bSalvar.disabled = true;
-      bSalvar.textContent = "Salvando...";
-      loading(msg, "Salvando...");
+      if (!Number.isFinite(kcalNumero) || kcalNumero < 0) { setM("Informe um valor válido de calorias.", "err"); return; }
+      if (bSalvar) { bSalvar.disabled = true; bSalvar.textContent = "Salvando..."; }
+      // watchdog: o botão NUNCA fica preso. Se algo travar, ele volta em 6s.
+      const watchdog = setTimeout(() => {
+        if (bSalvar && bSalvar.isConnected) { bSalvar.disabled = false; bSalvar.textContent = "Salvar"; }
+      }, 6000);
       try {
+        setM("Salvando...", "");
         await registrarConsumo(i, "substituiu", txt, kcalNumero);
         setMsg($("diarioMsg"), "Substituição salva. Sincronizando com o Firebase...", "ok");
       } catch (e) {
         diarioEditing = true;
-        if (box.isConnected) setMsg(msg, "Não salvou: " + e.message, "err");
+        setM("Não salvou: " + e.message, "err");
       } finally {
-        if (bSalvar.isConnected) {
+        clearTimeout(watchdog);
+        if (bSalvar && bSalvar.isConnected) {
           bSalvar.disabled = false;
           bSalvar.textContent = "Salvar";
         }
