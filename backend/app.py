@@ -23,6 +23,7 @@ import json
 import base64
 import secrets
 import datetime
+import time
 import urllib.parse
 import urllib.request
 from functools import wraps
@@ -49,6 +50,7 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-flash-latest")
 CRED_PATH = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "./firebase-service-account.json")
 FIREBASE_PROJECT_ID = os.environ.get("FIREBASE_PROJECT_ID", "")
+FIRESTORE_RPC_TIMEOUT = 4
 # E-mails com acesso administrativo (somente leitura). Separados por vírgula.
 # Sem padrão embutido: defina ADMIN_EMAILS no ambiente (ex.: no Render).
 ADMIN_EMAILS = {e.strip().lower() for e in os.environ.get(
@@ -341,7 +343,7 @@ def require_staff(f):
 # ---------------------------------------------------------------------------
 # Páginas
 # ---------------------------------------------------------------------------
-APP_VERSION = "2026-07-31-e"  # muda a cada deploy relevante p/ confirmarmos o que está no ar
+APP_VERSION = "2026-07-31-j"  # muda a cada deploy relevante p/ confirmarmos o que está no ar
 
 
 def _no_cache(resp):
@@ -946,17 +948,24 @@ def latest_diet(uid):
     return (docs[0].to_dict() or {}).get("dieta") if docs else None
 
 
-def update_consumo(uid, dia, idx, entry):
+def update_consumo(uid, dia, idx, entry, diet=None):
+    """Persiste o consumo e devolve o total.
+
+    ``diet`` evita consultar novamente a dieta quando o chamador já a carregou.
+    """
     ref = db().collection("usuarios").document(uid).collection("consumo").document(dia)
-    data = ref.get().to_dict() or {"data": dia, "refeicoes": {}}
+    # Sem limites explícitos, o cliente gRPC do Firestore pode repetir uma RPC
+    # por mais tempo que o timeout da interface, deixando o botão preso.
+    data = ref.get(timeout=FIRESTORE_RPC_TIMEOUT, retry=None).to_dict() or {"data": dia, "refeicoes": {}}
     if data.get("alvo_kcal") is None:
-        data["alvo_kcal"] = (latest_diet(uid) or {}).get("calorias_alvo_dia")
+        source_diet = diet if diet is not None else (latest_diet(uid) or {})
+        data["alvo_kcal"] = source_diet.get("calorias_alvo_dia")
     refs = data.get("refeicoes") or {}
     refs[str(idx)] = entry
     data["refeicoes"] = refs
     data["total_kcal"] = sum((e.get("kcal") or 0) for e in refs.values())
     data["atualizado_em"] = datetime.datetime.utcnow().isoformat()
-    ref.set(data)
+    ref.set(data, timeout=FIRESTORE_RPC_TIMEOUT, retry=None)
     return data["total_kcal"]
 
 
@@ -984,7 +993,8 @@ def remove_pending(uid, dia, idx, diet_id):
 def diet_by_id(uid, diet_id):
     """Carrega a dieta pelo id; se faltar/não existir, usa a mais recente."""
     if diet_id:
-        doc = db().collection("usuarios").document(uid).collection("dietas").document(diet_id).get()
+        doc = (db().collection("usuarios").document(uid).collection("dietas")
+               .document(diet_id).get(timeout=FIRESTORE_RPC_TIMEOUT, retry=None))
         if doc.exists:
             return (doc.to_dict() or {}).get("dieta") or {}
     return latest_diet(uid) or {}
@@ -1169,12 +1179,17 @@ def consumo_registrar():
     if status not in ("cumpriu", "substituiu", "pulou"):
         return jsonify({"error": "status inválido"}), 400
 
-    refs = (latest_diet(g.uid) or {}).get("refeicoes") or []
-    ref = refs[idx] if 0 <= idx < len(refs) else {}
-    nome = ref.get("nome", "Refeição")
+    # O dashboard envia o id da dieta que está exibindo. Buscar pelo documento
+    # evita uma query ordenada e garante que índice/nome vêm do mesmo plano.
+    diet = diet_by_id(g.uid, d.get("diet_id"))
+    refs = diet.get("refeicoes") or []
+    if not 0 <= idx < len(refs):
+        return jsonify({"error": "Refeição não encontrada na dieta atual."}), 400
+    nome = refs[idx].get("nome", "Refeição")
 
     if status == "cumpriu":
-        entry = {"nome": nome, "status": "cumpriu", "kcal": int(ref.get("kcal_total") or 0)}
+        entry = {"nome": nome, "status": "cumpriu",
+                 "kcal": int(refs[idx].get("kcal_total") or 0)}
     elif status == "pulou":
         entry = {"nome": nome, "status": "pulou", "kcal": 0}
     else:  # substituiu
@@ -1182,11 +1197,34 @@ def consumo_registrar():
             kcal = int(d.get("kcal"))
         except (TypeError, ValueError):
             return jsonify({"error": "Informe as calorias da substituição."}), 400
+        itens = (d.get("itens") or "").strip()
+        if not itens:
+            return jsonify({"error": "Informe o que você comeu."}), 400
+        if kcal < 0:
+            return jsonify({"error": "As calorias não podem ser negativas."}), 400
         entry = {"nome": nome, "status": "substituiu",
-                 "itens": (d.get("itens") or "").strip(), "kcal": kcal}
+                 "itens": itens, "kcal": kcal}
 
-    total = update_consumo(g.uid, dia, idx, entry)
-    return jsonify({"ok": True, "total_kcal": total})
+    started = time.monotonic()
+    try:
+        total = update_consumo(g.uid, dia, idx, entry, diet=diet)
+    except Exception as exc:  # noqa: BLE001
+        elapsed_ms = round((time.monotonic() - started) * 1000)
+        print(f"[consumo] falha uid={g.uid} dia={dia} idx={idx} "
+              f"ms={elapsed_ms} erro={type(exc).__name__}: {exc}")
+        return jsonify({
+            "error": "Não foi possível gravar no Firestore. Tente novamente.",
+            "code": "firestore_write_failed",
+        }), 503
+    elapsed_ms = round((time.monotonic() - started) * 1000)
+    print(f"[consumo] salvo uid={g.uid} dia={dia} idx={idx} ms={elapsed_ms}")
+    return jsonify({
+        "ok": True,
+        "idx": idx,
+        "entry": entry,
+        "total_kcal": total,
+        "alvo_kcal": diet.get("calorias_alvo_dia"),
+    })
 
 
 @app.route("/api/consumo/remover", methods=["POST"])
