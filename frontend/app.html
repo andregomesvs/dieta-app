@@ -533,7 +533,7 @@
   $("btnLogout").onclick = () => signOut(auth);
 
   // Selo de versão: HTML espera "v2026-07-31-b"; o /health diz o que o servidor tem.
-  const HTML_VERSION = "2026-07-31-l";
+  const HTML_VERSION = "2026-07-31-m";
   (async () => {
     const el = $("appVersion");
     if (el) el.textContent = "html " + HTML_VERSION;
@@ -657,6 +657,7 @@
   const WD_LABEL = ["Seg","Ter","Qua","Qui","Sex","Sáb","Dom"];
   let treinoMeu = null, treinoSemana = { dias: [], checkins: {} }, treinoView = "cal", detIdx = 0, detData = null;
   let treinoLista = [], detAnterior = null;
+  let esportesUser = [], atvIntensidade = "moderado";
   let genModal = new Set(), genLocal = new Set();
 
   $("btnTreino").onclick = () => openTreinoUser();
@@ -686,11 +687,138 @@
       treinoMeu = await api("/api/treino/meu");
       treinoSemana = await api("/api/treino/semana");
       treinoLista = await api("/api/treino/lista");
+      try { esportesUser = (await api("/api/treino/esportes")).esportes || []; } catch (_) { esportesUser = []; }
       setMsg($("treinoMsg"), "", "");
       renderTreino();
     } catch (e) { setMsg($("treinoMsg"), e.message, "err"); }
   }
   async function reloadSemana() { try { treinoSemana = await api("/api/treino/semana"); } catch (_) {} }
+
+  // ----- Atividades extras do dia (ex.: jiu-jitsu além do treino) -----
+  function atividadesDoDia(ck) {
+    const lista = (ck.atividades || []).slice();
+    // compat: atividade única antiga vira item da lista (sem remover)
+    if (ck.atividade) lista.unshift({ id: "_legacy", esporte: ck.atividade, nota: "",
+      intensidade: ck.atividade_intensidade || "", kcal: ck.kcal_atividade || 0, legacy: true });
+    return lista;
+  }
+  function kcalAtividadesDia(ck) {
+    return atividadesDoDia(ck).reduce((a, x) => a + (Number(x.kcal) || 0), 0);
+  }
+  function atividadesSectionHtml(ck) {
+    const lista = atividadesDoDia(ck);
+    const itens = lista.length
+      ? lista.map((a) => `<div class="hoje-meal" style="display:flex; align-items:center; gap:10px;">
+          <div style="flex:1; min-width:0;">
+            <div style="font-size:14px; font-weight:600;">${esc(a.esporte || "Atividade")}</div>
+            <div style="font-size:12px; color:var(--muted3);">${a.nota ? esc(a.nota) + " · " : ""}${esc(a.intensidade || "")}</div>
+          </div>
+          <span class="mono" style="font-size:12px; color:#3E6B8C;">${a.kcal || 0} kcal</span>
+          ${a.legacy ? "" : `<button type="button" class="chip-sm danger atv-del" data-id="${esc(a.id)}">Remover</button>`}
+        </div>`).join("")
+      : `<div style="font-size:12.5px; color:var(--muted3);">Nenhuma atividade extra neste dia.</div>`;
+    const totalAtv = kcalAtividadesDia(ck);
+    return `<div class="card" style="margin-top:12px;">
+      <div class="row" style="justify-content:space-between; align-items:center;">
+        <div class="card-title" style="font-size:17px;">Atividades extras${totalAtv ? " · " + totalAtv + " kcal" : ""}</div>
+        <button type="button" id="btnAddAtv" class="btn btn-ghost" style="height:34px;">+ Atividade</button>
+      </div>
+      <div style="font-size:12px; color:var(--muted3); margin-top:2px;">Fez outro esporte neste dia (ex.: jiu-jitsu)? Some aqui.</div>
+      <div style="margin-top:10px; display:grid; gap:8px;">${itens}</div>
+      <div id="atvForm" class="hidden" style="margin-top:12px;"></div>
+      <div id="atvMsg" class="msg"></div>
+    </div>`;
+  }
+  function atvFormHtml() {
+    const opts = esportesUser.map((e) => `<option value="${esc(e)}">${esc(e)}</option>`).join("");
+    return `<div style="border:1px solid var(--line); border-radius:12px; padding:12px; background:#fff;">
+      <label style="display:block;"><span class="flabel">Esporte</span>
+        <select id="atv_esporte" class="field">
+          <option value="">Selecione…</option>
+          ${opts}
+          <option value="__novo__">➕ Cadastrar novo esporte</option>
+        </select></label>
+      <div id="atv_novoWrap" class="hidden" style="margin-top:8px; display:flex; gap:6px;">
+        <input id="atv_novo" class="field" placeholder="nome do esporte (ex.: Jiu-Jitsu)" style="flex:1;" />
+        <button type="button" id="atv_novoBtn" class="btn btn-ghost" style="height:44px;">Salvar</button>
+      </div>
+      <label style="display:block; margin-top:10px;"><span class="flabel">Detalhe / duração (opcional)</span>
+        <input id="atv_nota" class="field" placeholder="ex.: 60 min, treino intenso" /></label>
+      <div style="margin-top:10px;"><span class="flabel">Intensidade</span>
+        <div style="display:flex; gap:6px;">${["leve","moderado","intenso"].map((f) => `<button type="button" class="chip-choice atv-fb ${f === atvIntensidade ? "active" : ""}" data-f="${f}">${f}</button>`).join("")}</div></div>
+      <div style="margin-top:10px; display:flex; gap:6px; align-items:flex-end;">
+        <label style="flex:1;"><span class="flabel">Calorias gastas</span><div class="field-unit"><input id="atv_kcal" class="field num" type="number" placeholder="ex.: 500" style="padding-right:42px;" /><span class="u">kcal</span></div></label>
+        <button type="button" id="btnEstimarAtv" class="btn btn-ghost" style="height:48px;">Estimar (IA)</button>
+      </div>
+      <button type="button" id="btnSalvarAtv" class="btn btn-primary" style="width:100%; height:46px; justify-content:center; margin-top:12px;">Adicionar ao dia</button>
+    </div>`;
+  }
+  function attachAtividadesHandlers() {
+    const badd = $("btnAddAtv");
+    if (badd) badd.onclick = () => {
+      const wrap = $("atvForm");
+      if (!wrap.classList.contains("hidden")) { wrap.classList.add("hidden"); wrap.innerHTML = ""; return; }
+      atvIntensidade = "moderado";
+      wrap.innerHTML = atvFormHtml();
+      wrap.classList.remove("hidden");
+      attachAtvFormHandlers();
+    };
+    document.querySelectorAll(".atv-del").forEach((b) => b.onclick = async () => {
+      b.disabled = true;
+      try {
+        await api("/api/treino/atividade/remover", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ data: detData, id: b.dataset.id }) });
+        await reloadSemana(); renderTreino();
+      } catch (e) { setMsg($("atvMsg"), "Não removeu: " + e.message, "err"); if (b.isConnected) b.disabled = false; }
+    });
+  }
+  function attachAtvFormHandlers() {
+    const sel = $("atv_esporte");
+    sel.onchange = () => { $("atv_novoWrap").classList.toggle("hidden", sel.value !== "__novo__"); };
+    $("atv_novoBtn").onclick = async () => {
+      const nome = $("atv_novo").value.trim();
+      if (!nome) { setMsg($("atvMsg"), "Digite o nome do esporte.", "err"); return; }
+      try {
+        const r = await api("/api/treino/esportes", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ nome }) });
+        esportesUser = r.esportes || [];
+        $("atvForm").innerHTML = atvFormHtml();
+        attachAtvFormHandlers();
+        $("atv_esporte").value = nome;
+        setMsg($("atvMsg"), "Esporte cadastrado.", "ok");
+      } catch (e) { setMsg($("atvMsg"), "Não cadastrou: " + e.message, "err"); }
+    };
+    document.querySelectorAll(".atv-fb").forEach((b) => b.onclick = () => { atvIntensidade = b.dataset.f; document.querySelectorAll(".atv-fb").forEach((x) => x.classList.toggle("active", x === b)); });
+    $("btnEstimarAtv").onclick = async () => {
+      const esp = $("atv_esporte").value;
+      if (!esp || esp === "__novo__") { setMsg($("atvMsg"), "Escolha um esporte primeiro.", "err"); return; }
+      const nota = $("atv_nota").value.trim();
+      const texto = esp + (nota ? " " + nota : "") + " intensidade " + atvIntensidade;
+      const b = $("btnEstimarAtv"); b.disabled = true;
+      loading($("atvMsg"), "Estimando...");
+      const ctrl = new AbortController(); let timer;
+      const limite = new Promise((_, rej) => { timer = setTimeout(() => { ctrl.abort(); rej(new Error("timeout")); }, 6000); });
+      try {
+        const r = await Promise.race([
+          api("/api/treino/estimar-atividade", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ texto }), signal: ctrl.signal }),
+          limite,
+        ]);
+        if (r && r.ok && r.kcal) { $("atv_kcal").value = r.kcal; setMsg($("atvMsg"), "~" + r.kcal + " kcal. Ajuste se quiser.", "ok"); }
+        else setMsg($("atvMsg"), "Não consegui estimar. Digite as calorias.", "err");
+      } catch (e) { setMsg($("atvMsg"), "A estimativa não respondeu. Digite as calorias.", "err"); }
+      finally { clearTimeout(timer); if (b) b.disabled = false; }
+    };
+    $("btnSalvarAtv").onclick = async () => {
+      const esp = $("atv_esporte").value;
+      if (!esp || esp === "__novo__") { setMsg($("atvMsg"), "Escolha um esporte.", "err"); return; }
+      const nota = $("atv_nota").value.trim();
+      const kcal = Number($("atv_kcal").value) || 0;
+      const b = $("btnSalvarAtv"); if (b) { b.disabled = true; b.textContent = "Adicionando..."; }
+      loading($("atvMsg"), "Adicionando...");
+      try {
+        await api("/api/treino/atividade", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ data: detData, esporte: esp, nota, intensidade: atvIntensidade, kcal }) });
+        await reloadSemana(); renderTreino();
+      } catch (e) { setMsg($("atvMsg"), "Não adicionou: " + e.message, "err"); if (b && b.isConnected) { b.disabled = false; b.textContent = "Adicionar ao dia"; } }
+    };
+  }
 
   const FEEDBACK_FATOR = { leve: 0.7, moderado: 1.0, intenso: 1.25 };
   let feedbackSel = "moderado";
@@ -709,7 +837,7 @@
     const hoje = treinoSemana.hoje || new Date().toISOString().slice(0, 10);
     let agendadas = 0, feitas = 0, kcalSemana = 0;
     dias.forEach((d) => { if (sessaoDoDow(d.dow)) { agendadas++; const c = checks[d.data] || {}; if (c.finalizado && c.plano_id === treinoMeu.id) feitas++; } });
-    Object.values(checks).forEach((c) => { kcalSemana += (c.kcal_sessao || 0) + (c.kcal_atividade || 0); });
+    Object.values(checks).forEach((c) => { kcalSemana += (c.kcal_sessao || 0) + (c.kcal_atividade || 0) + (c.atividades || []).reduce((a, x) => a + (Number(x.kcal) || 0), 0); });
     const pct = agendadas ? Math.round((feitas / agendadas) * 100) : 0;
     let renovar = "";
     if (treinoMeu.data_fim) {
@@ -733,13 +861,16 @@
       const ck = checks[d.data] || {};
       const done = ck.finalizado && ck.plano_id === treinoMeu.id;
       const passou = d.data < hoje, ehHoje = d.data === hoje;
+      const temAtv = (ck.atividades || []).length || !!ck.atividade;
       let bg = "var(--soft)", bd = "var(--line)", cor = "var(--muted3)", txt = "—";
       if (sd) {
         if (done) { bg = "rgba(20,115,90,.12)"; bd = "rgba(20,115,90,.4)"; cor = "var(--green)"; txt = "✓ feito"; }
         else if (passou) { bg = "rgba(192,57,43,.10)"; bd = "rgba(192,57,43,.35)"; cor = "var(--danger)"; txt = "não feito"; }
         else { bg = "#fff"; bd = "var(--line2)"; cor = "#3C4340"; txt = esc(sd.s.foco || "treino"); }
-      } else if (ck.atividade) {
-        bg = "rgba(62,107,140,.12)"; bd = "rgba(62,107,140,.4)"; cor = "#3E6B8C"; txt = "🏃 " + esc(String(ck.atividade).slice(0, 12));
+        if (temAtv) txt += " +🏃";
+      } else if (temAtv) {
+        const primeira = (ck.atividades && ck.atividades[0] && ck.atividades[0].esporte) || ck.atividade || "atividade";
+        bg = "rgba(62,107,140,.12)"; bd = "rgba(62,107,140,.4)"; cor = "#3E6B8C"; txt = "🏃 " + esc(String(primeira).slice(0, 12));
       }
       html += `<div class="tr-day" data-dow="${d.dow}" data-date="${d.data}" style="cursor:pointer; border:1px solid ${bd}; background:${bg}; border-radius:12px; padding:8px 3px; text-align:center; ${ehHoje ? "box-shadow:0 0 0 2px rgba(20,115,90,.25);" : ""}">
         <div style="font-size:11px; color:var(--muted3);">${WD_LABEL[d.dow]}</div>
@@ -817,8 +948,10 @@
       html += `<div style="margin-top:12px; font-size:13px; color:var(--muted);">Feedback: <b>${esc(chk.feedback || "—")}</b>${chk.kcal_sessao ? " · ~" + chk.kcal_sessao + " kcal" : ""}${chk.comentario ? `<br>“${esc(chk.comentario)}”` : ""}</div>`;
     }
     html += `</div>`;
+    html += atividadesSectionHtml(chk);   // atividades extras também nos dias com treino
     $("treinoBody").innerHTML = html;
     $("btnVoltaCal").onclick = () => { treinoView = "cal"; renderTreino(); };
+    attachAtividadesHandlers();
     document.querySelectorAll(".tr-check").forEach((c) => c.onchange = () => toggleEx(+c.dataset.i, c.checked));
     document.querySelectorAll(".fb-chip").forEach((b) => b.onclick = () => {
       feedbackSel = b.dataset.f;
@@ -874,48 +1007,17 @@
 
   function renderAtividadeLivre() {
     const ck = (treinoSemana.checkins || {})[detData] || {};
-    let atvFb = ck.atividade_intensidade || "moderado";
-    const html = `<div class="card">
+    let html = `<div class="card">
       <div class="row" style="justify-content:space-between;">
-        <div><div class="serif" style="font-size:22px;">Atividade livre</div>
-        <div style="font-size:12px; color:var(--muted3);">${fmtBR(detData)}</div></div>
+        <div><div class="serif" style="font-size:22px;">${fmtBR(detData)}</div>
+        <div style="font-size:12px; color:var(--muted3);">Dia sem treino agendado</div></div>
         <button id="btnVoltaCal2" class="btn btn-ghost" style="height:36px;">← Calendário</button>
       </div>
-      <div style="font-size:12.5px; color:var(--muted3); margin-top:2px;">Fez algo fora do plano? Registre aqui (ex.: corrida de 10 km, treino de Jiu-Jitsu).</div>
-      <label style="display:block; margin-top:12px;"><span class="flabel">O que você fez</span><input id="atv_txt" class="field" value="${esc(ck.atividade || "")}" placeholder="ex.: corrida de 10 km" /></label>
-      <div style="margin-top:10px;"><span class="flabel">Intensidade</span>
-        <div style="display:flex; gap:6px;">${["leve","moderado","intenso"].map((f) => `<button type="button" class="chip-choice atv-fb ${atvFb === f ? "active" : ""}" data-f="${f}">${f}</button>`).join("")}</div></div>
-      <div style="margin-top:10px; display:flex; gap:6px; align-items:flex-end;">
-        <label style="flex:1;"><span class="flabel">Calorias gastas</span><div class="field-unit"><input id="atv_kcal" class="field num" type="number" value="${ck.kcal_atividade || ""}" placeholder="ex.: 700" style="padding-right:42px;" /><span class="u">kcal</span></div></label>
-        <button id="btnEstimarAtv" class="btn btn-ghost" style="height:48px;">Estimar</button>
-      </div>
-      <button id="btnSalvarAtv" class="btn btn-primary" style="width:100%; height:48px; justify-content:center; margin-top:14px;">Salvar atividade</button>
-      <div id="atvMsg" class="msg"></div></div>`;
+      <div style="font-size:12.5px; color:var(--muted3); margin-top:2px;">Registre o que você fez neste dia (ex.: corrida, jiu-jitsu).</div></div>`;
+    html += atividadesSectionHtml(ck);
     $("treinoBody").innerHTML = html;
-    document.querySelectorAll(".atv-fb").forEach((b) => b.onclick = () => { atvFb = b.dataset.f; document.querySelectorAll(".atv-fb").forEach((x) => x.classList.toggle("active", x === b)); });
     $("btnVoltaCal2").onclick = () => { treinoView = "cal"; renderTreino(); };
-    $("btnEstimarAtv").onclick = async () => {
-      const txt = $("atv_txt").value.trim();
-      if (!txt) { setMsg($("atvMsg"), "Descreva a atividade primeiro.", "err"); return; }
-      loading($("atvMsg"), "Estimando...");
-      try {
-        const r = await api("/api/treino/estimar-atividade", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ texto: txt }) });
-        if (r.ok) { $("atv_kcal").value = r.kcal; setMsg($("atvMsg"), "~" + r.kcal + " kcal. Ajuste se quiser.", "ok"); }
-        else setMsg($("atvMsg"), "Não consegui estimar. Informe as calorias.", "err");
-      } catch (e) { setMsg($("atvMsg"), e.message, "err"); }
-    };
-    $("btnSalvarAtv").onclick = async () => {
-      const txt = $("atv_txt").value.trim();
-      if (!txt) { setMsg($("atvMsg"), "Descreva a atividade.", "err"); return; }
-      loading($("atvMsg"), "Salvando...");
-      try {
-        await api("/api/treino/atividade", { method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ data: detData, atividade: txt, intensidade: atvFb, kcal: Number($("atv_kcal").value) || 0 }) });
-        await reloadSemana();
-        setMsg($("treinoMsg"), "Atividade registrada!", "ok");
-        treinoView = "cal"; renderTreino();
-      } catch (e) { setMsg($("atvMsg"), e.message, "err"); }
-    };
+    attachAtividadesHandlers();
   }
 
   function treinoGenFormHtml() {
@@ -1153,16 +1255,22 @@
       if (!tses.length) { html += `<div class="empty" style="margin-top:8px;">Sem registros de treino ainda.</div>`; }
       else {
         const fin = tses.filter((t) => t.finalizado).length;
-        const kcalTot = tses.reduce((a, t) => a + (t.kcal_sessao || 0) + (t.kcal_atividade || 0), 0);
+        const atvKcal = (t) => (t.atividades || []).reduce((a, x) => a + (Number(x.kcal) || 0), 0);
+        const atvCount = tses.reduce((a, t) => a + (t.atividades || []).length + (t.atividade ? 1 : 0), 0);
+        const kcalTot = tses.reduce((a, t) => a + (t.kcal_sessao || 0) + (t.kcal_atividade || 0) + atvKcal(t), 0);
         html += `<div class="totals" style="margin-top:12px;">
           <div class="box"><b>${fin}</b><small>sessões feitas</small></div>
-          <div class="box"><b>${tses.filter((t) => t.atividade).length}</b><small>atividades livres</small></div>
+          <div class="box"><b>${atvCount}</b><small>atividades extras</small></div>
           <div class="box"><b>${kcalTot}</b><small>kcal (30d)</small></div></div>
           <div style="margin-top:10px; display:grid; gap:4px;">` +
           tses.slice(0, 12).map((t) => {
             const dt = (t.data || "").split("-").reverse().join("/");
-            const info = t.finalizado ? ("sessão · " + (t.feedback || "?") + (t.kcal_sessao ? " · " + t.kcal_sessao + " kcal" : "") + (t.comentario ? " · “" + esc(t.comentario) + "”" : ""))
-              : (t.atividade ? ("🏃 " + esc(t.atividade) + (t.kcal_atividade ? " · " + t.kcal_atividade + " kcal" : "")) : "iniciado");
+            const extras = [];
+            if (t.atividade) extras.push(t.atividade + (t.kcal_atividade ? " (" + t.kcal_atividade + " kcal)" : ""));
+            (t.atividades || []).forEach((a) => extras.push((a.esporte || "atividade") + (a.kcal ? " (" + a.kcal + " kcal)" : "")));
+            let info = t.finalizado ? ("sessão · " + (t.feedback || "?") + (t.kcal_sessao ? " · " + t.kcal_sessao + " kcal" : "") + (t.comentario ? " · “" + t.comentario + "”" : ""))
+              : (extras.length ? "" : "iniciado");
+            if (extras.length) info += (info ? " · " : "") + "🏃 " + extras.join(", ");
             return `<div class="meal-row" style="padding:7px 4px;"><span class="time" style="width:auto;">${esc(dt)}</span><span class="nm" style="font-weight:400;">${esc(info)}</span></div>`;
           }).join("") + `</div>`;
       }

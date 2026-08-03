@@ -343,7 +343,7 @@ def require_staff(f):
 # ---------------------------------------------------------------------------
 # Páginas
 # ---------------------------------------------------------------------------
-APP_VERSION = "2026-07-31-l"  # muda a cada deploy relevante p/ confirmarmos o que está no ar
+APP_VERSION = "2026-07-31-m"  # muda a cada deploy relevante p/ confirmarmos o que está no ar
 
 
 def _no_cache(resp):
@@ -1628,20 +1628,84 @@ def treino_finalizar():
 @app.route("/api/treino/atividade", methods=["POST"])
 @require_auth
 def treino_atividade():
-    """Registra uma atividade livre (ex.: corrida 10km) num dia do calendário."""
+    """Adiciona uma atividade extra (ex.: jiu-jitsu) a um dia. Podem existir várias
+    por dia — inclusive em dias que já têm treino agendado."""
     body = request.get_json(silent=True) or {}
     dia = body.get("data") or now_local().strftime("%Y-%m-%d")
+    esporte = (body.get("esporte") or body.get("atividade") or "").strip()
+    if not esporte:
+        return jsonify({"error": "Informe o esporte/atividade."}), 400
+    try:
+        kcal = int(body.get("kcal") or 0)
+    except (TypeError, ValueError):
+        kcal = 0
+    if kcal < 0:
+        kcal = 0
     ref = db().collection("usuarios").document(g.uid).collection("treino_sessoes").document(dia)
     data = ref.get().to_dict() or {"data": dia}
-    data["atividade"] = (body.get("atividade") or "").strip()
-    data["atividade_intensidade"] = body.get("intensidade")
-    try:
-        data["kcal_atividade"] = int(body.get("kcal") or 0)
-    except (TypeError, ValueError):
-        data["kcal_atividade"] = 0
-    data["atividade_em"] = datetime.datetime.utcnow().isoformat()
+    atividades = data.get("atividades") or []
+    atividades.append({
+        "id": secrets.token_hex(4),
+        "esporte": esporte,
+        "nota": (body.get("nota") or "").strip(),
+        "intensidade": body.get("intensidade") or "moderado",
+        "kcal": kcal,
+        "criado_em": datetime.datetime.utcnow().isoformat(),
+    })
+    data["atividades"] = atividades
+    data["atualizado_em"] = datetime.datetime.utcnow().isoformat()
     ref.set(data, merge=True)
-    return jsonify({"ok": True})
+    return jsonify({"ok": True, "atividades": atividades})
+
+
+@app.route("/api/treino/atividade/remover", methods=["POST"])
+@require_auth
+def treino_atividade_remover():
+    """Remove uma atividade extra do dia pelo id."""
+    body = request.get_json(silent=True) or {}
+    dia = body.get("data") or now_local().strftime("%Y-%m-%d")
+    aid = str(body.get("id") or "")
+    ref = db().collection("usuarios").document(g.uid).collection("treino_sessoes").document(dia)
+    data = ref.get().to_dict() or {}
+    atividades = [a for a in (data.get("atividades") or []) if str(a.get("id")) != aid]
+    data["atividades"] = atividades
+    data["atualizado_em"] = datetime.datetime.utcnow().isoformat()
+    ref.set(data, merge=True)
+    return jsonify({"ok": True, "atividades": atividades})
+
+
+@app.route("/api/treino/esportes", methods=["GET", "POST"])
+@require_auth
+def treino_esportes():
+    """Lista/registra os esportes do usuário para o seletor de atividades."""
+    ref = db().collection("usuarios").document(g.uid)
+    if request.method == "POST":
+        body = request.get_json(silent=True) or {}
+        nome = (body.get("nome") or "").strip()
+        if not nome:
+            return jsonify({"error": "Informe o nome do esporte."}), 400
+        if len(nome) > 40:
+            nome = nome[:40]
+        atual = (ref.get().to_dict() or {}).get("esportes_treino") or []
+        if nome.lower() not in [e.lower() for e in atual]:
+            atual.append(nome)
+        ref.set({"esportes_treino": atual}, merge=True)
+        return jsonify({"ok": True, "esportes": atual})
+    esportes = (ref.get().to_dict() or {}).get("esportes_treino") or []
+    return jsonify({"esportes": esportes})
+
+
+@app.route("/api/treino/esportes/remover", methods=["POST"])
+@require_auth
+def treino_esportes_remover():
+    """Remove um esporte da lista do usuário."""
+    body = request.get_json(silent=True) or {}
+    nome = (body.get("nome") or "").strip()
+    ref = db().collection("usuarios").document(g.uid)
+    atual = [e for e in ((ref.get().to_dict() or {}).get("esportes_treino") or [])
+             if e.lower() != nome.lower()]
+    ref.set({"esportes_treino": atual}, merge=True)
+    return jsonify({"ok": True, "esportes": atual})
 
 
 @app.route("/api/treino/estimar-atividade", methods=["POST"])
@@ -1658,7 +1722,7 @@ def treino_estimar_atividade():
               + (f"Peso da pessoa: {peso} kg. " if peso else "")
               + f"Atividade: {texto}")
     try:
-        resp = gemini().generate_content(prompt)
+        resp = gemini().generate_content(prompt, request_options={"timeout": 8})
         parsed = _safe_json((resp.text or "").strip())
         kcal = int(parsed.get("kcal") or 0)
         if kcal <= 0:
